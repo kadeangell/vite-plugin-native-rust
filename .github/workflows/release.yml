@@ -49,14 +49,26 @@ jobs:
 
       # Publish both packages. `npm publish` runs the package's own build
       # (prepublishOnly/prepack) as configured; provenance ties the tarball to
-      # this workflow run. Skipped on a dry-run dispatch.
+      # this workflow run. Skipped on a dry-run dispatch, and skipped with a
+      # notice when the NPM_TOKEN secret hasn't been configured yet (so a tag
+      # push without the secret still gives a green build+test run).
       - name: Publish vite-plugin-native-rust
         if: github.event_name == 'push' || inputs.dry_run == false
-        run: npm publish --provenance --access public -w vite-plugin-native-rust
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::notice::NPM_TOKEN secret not set — skipping npm publish"
+            exit 0
+          fi
+          npm publish --provenance --access public -w vite-plugin-native-rust
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Publish create-native-rust
         if: github.event_name == 'push' || inputs.dry_run == false
-        run: npm publish --provenance --access public -w create-native-rust
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::notice::NPM_TOKEN secret not set — skipping npm publish"
+            exit 0
+          fi
+          npm publish --provenance --access public -w create-native-rust
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
