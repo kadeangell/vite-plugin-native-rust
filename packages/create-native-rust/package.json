@@ -37,6 +37,6 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test test/scaffold.test.mjs test/e2e-build.test.mjs"
   }
 }
