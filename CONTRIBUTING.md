@@ -9,7 +9,8 @@ docs fixes, and code.
 - **Node.js >= 20**
 - **A Rust toolchain** — `cargo` on your `PATH`. Install from <https://rustup.rs>.
   The tests and example compile real crates, so this is required, not optional.
-- **macOS or Linux.** Windows is not yet supported (see the tracking issue).
+- **macOS or Linux.** Windows support is not planned; a well-tested community
+  PR would be considered, but it is not on the roadmap.
 
 ## Repository layout
 

@@ -36,7 +36,7 @@ methodology and the honest serverless caveats are in the
 - Vite >= 6 (peer dependency)
 - `@napi-rs/cli` >= 3 (peer dependency — you install it)
 - A Rust toolchain (`cargo` on `PATH`; install from <https://rustup.rs>)
-- macOS or Linux — **Windows is not yet supported**
+- macOS or Linux — **Windows support is not planned**
 
 Supported frameworks: React Router v7 / v8 and vanilla Vite SSR.
 

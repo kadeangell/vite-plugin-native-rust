@@ -71,7 +71,7 @@ correction told straight.
 | Node | >= 20 |
 | Build-time | Rust toolchain (`cargo` on `PATH`) + `@napi-rs/cli` >= 3 |
 
-**Windows is not yet supported.** Deno, Bun, and edge runtimes are out of scope —
+**Windows support is not planned.** Deno, Bun, and edge runtimes are out of scope —
 see [docs/when-not-to-use.md](docs/when-not-to-use.md).
 
 ## Quickstart

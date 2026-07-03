@@ -25,7 +25,7 @@ Initial public release. Experimental — the API may change before 0.2.
 - Atomic cache writes; cross-process safe.
 - Supported: Vite >= 6 (tested through the Vite 8 Environment API via
   React Router v8), React Router v7/v8, vanilla Vite SSR, macOS/Linux,
-  Node >= 20. Windows not yet supported.
+  Node >= 20. Windows support is not planned.
 
 ### create-native-rust
 

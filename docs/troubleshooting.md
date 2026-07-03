@@ -151,9 +151,10 @@ you never invoke `react-router-serve`.)
 
 **Symptom:** anything on Windows.
 
-**Status:** Windows is **not yet supported**. The addon path handling and build
-flow have only been verified on macOS and Linux. Follow the tracking issue for
-progress; contributions welcome (see [CONTRIBUTING.md](../CONTRIBUTING.md)).
+**Status:** Windows support is **not planned**. The addon path handling and build
+flow are only verified on macOS and Linux, and there is no roadmap item to change
+that. If Windows matters to you, a well-tested community PR would be considered
+(see [CONTRIBUTING.md](../CONTRIBUTING.md)), but don't wait on the maintainers.
 
 ## Dev memory creeps up over a long session
 

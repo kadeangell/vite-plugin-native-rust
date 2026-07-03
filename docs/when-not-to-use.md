@@ -60,11 +60,11 @@ only. On Vercel that means the **Node.js** function runtime, not the Edge runtim
 If your route must run at the edge, this plugin cannot help it — use WASM, which
 edge runtimes can execute.
 
-## You're on Windows (for now)
+## You're on Windows
 
-Windows is not yet supported. macOS and Linux are the verified targets. If Windows
-is your dev or deploy platform, this plugin isn't ready for you yet — track the
-Windows issue for progress.
+Windows support is not planned. macOS and Linux are the verified targets. If
+Windows is your dev or deploy platform, this plugin isn't for you — WSL2 may
+work (the Linux path applies) but is unverified and unsupported.
 
 ## A note on the dev-loop memory leak
 
