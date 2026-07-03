@@ -1,0 +1,104 @@
+name: Bug report
+description: Something isn't working — a compile failure, wrong output, or unexpected error.
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. The version details below are what we need to
+        reproduce it — please fill them all in. For security issues, do **not**
+        use this form; see [SECURITY.md](../blob/main/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: I imported `./native/src/lib.rs` from a `.server.ts` and …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: Minimal steps to reproduce. A link to a minimal repo is ideal.
+      placeholder: |
+        1. `npm create native-rust native`
+        2. wire the plugin into vite.config
+        3. `npm run dev` and hit the route
+        4. …
+    validations:
+      required: true
+  - type: textarea
+    id: plugin-log
+    attributes:
+      label: Plugin log output
+      description: >
+        Paste the `[vite-rust]` / `[vite-plugin-native-rust]` lines and any
+        error. If nothing prints, set `logLevel: 'info'` (the default) and retry.
+        A `napi build` failure tail is especially useful.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS + architecture
+      placeholder: "macOS 14 arm64 / Ubuntu 22.04 x86_64"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: "`node -v`"
+      placeholder: "v20.11.0"
+    validations:
+      required: true
+  - type: input
+    id: vite
+    attributes:
+      label: Vite version
+      placeholder: "6.4.3"
+    validations:
+      required: true
+  - type: input
+    id: rustc
+    attributes:
+      label: rustc version
+      description: "`rustc -V`"
+      placeholder: "rustc 1.96.0"
+    validations:
+      required: true
+  - type: input
+    id: napi-cli
+    attributes:
+      label: "@napi-rs/cli version"
+      description: "`npx napi --version`"
+      placeholder: "3.7.2"
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: vite-plugin-native-rust version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: framework
+    attributes:
+      label: Framework
+      description: React Router v7/v8, vanilla Vite SSR, or other.
+      placeholder: "React Router 7.18.1"
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmations
+      options:
+        - label: I'm on macOS or Linux (Windows is documented as not-yet-supported).
+          required: true
+        - label: I'm importing the `.rs` from a server-only module (e.g. `.server.ts`).
+          required: false

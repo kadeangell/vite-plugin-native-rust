@@ -1,0 +1,47 @@
+name: Feature request
+description: Suggest a capability, option, or supported target.
+title: "[feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea. This is an experimental 0.1 project with a
+        deliberately narrow scope (see [when-not-to-use.md](../blob/main/docs/when-not-to-use.md)
+        and the out-of-scope list in the README), so it helps to frame the
+        request against a concrete problem.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do that the plugin doesn't let you do today?
+      placeholder: When I …, I have to … because the plugin only …
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like the plugin to do? A new option, a new supported target, a behavior change?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you've tried, or other ways this could be solved (including "just use WASM").
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Plugin option / API
+        - New framework or bundler support
+        - New OS / runtime support
+        - Scaffolding CLI (create-native-rust)
+        - Docs
+        - Other
+    validations:
+      required: true
