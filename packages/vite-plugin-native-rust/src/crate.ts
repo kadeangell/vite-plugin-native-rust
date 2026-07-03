@@ -57,9 +57,48 @@ function collectRustFiles(dir: string): string[] {
 }
 
 /**
- * sha256 hex over each input's crate-relative path + '\0' + file contents.
+ * sha256 hex over each input's `baseDir`-relative path + '\0' + file contents,
+ * plus an optional `extra` string (e.g. a toolchain fingerprint) folded in last.
  * The path is folded in so a rename changes the hash even when contents are
- * identical. Throws a clear Error naming `crateDir` if it can't be read.
+ * identical; the relative path keeps the digest machine-independent. Throws a
+ * clear Error naming `baseDir` if any input can't be read.
+ */
+export function hashInputs(
+  baseDir: string,
+  inputs: string[],
+  extra?: string,
+): string {
+  const hash = createHash("sha256");
+  for (const input of inputs) {
+    let contents: Buffer;
+    try {
+      contents = readFileSync(input);
+    } catch (err) {
+      throw new Error(
+        `Cannot hash Rust crate at "${baseDir}": failed to read "${input}": ${
+          (err as Error).message
+        }`,
+      );
+    }
+    // Normalize the relative path to '/' so hashes match across platforms.
+    const relPath = relative(baseDir, input).split(sep).join("/");
+    hash.update(relPath);
+    hash.update("\0");
+    hash.update(contents);
+    hash.update("\0");
+  }
+  if (extra !== undefined) {
+    hash.update("__extra__\0");
+    hash.update(extra);
+    hash.update("\0");
+  }
+  return hash.digest("hex");
+}
+
+/**
+ * sha256 hex of a single crate's own inputs (`Cargo.toml`, `Cargo.lock`, and
+ * `src/**.rs`). Retained for the metadata fallback path; the primary path hashes
+ * the full local dependency closure via `hashInputs`.
  */
 export function hashCrate(crateDir: string): string {
   let inputs: string[];
@@ -70,25 +109,5 @@ export function hashCrate(crateDir: string): string {
       `Cannot hash Rust crate at "${crateDir}": ${(err as Error).message}`,
     );
   }
-
-  const hash = createHash("sha256");
-  for (const input of inputs) {
-    let contents: Buffer;
-    try {
-      contents = readFileSync(input);
-    } catch (err) {
-      throw new Error(
-        `Cannot hash Rust crate at "${crateDir}": failed to read "${input}": ${
-          (err as Error).message
-        }`,
-      );
-    }
-    // Normalize the relative path to '/' so hashes match across platforms.
-    const relPath = relative(crateDir, input).split(sep).join("/");
-    hash.update(relPath);
-    hash.update("\0");
-    hash.update(contents);
-    hash.update("\0");
-  }
-  return hash.digest("hex");
+  return hashInputs(crateDir, inputs);
 }

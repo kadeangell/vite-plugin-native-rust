@@ -3,6 +3,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import type { Plugin } from "vite";
 
+import { collectClosureInputs } from "./closure.ts";
 import {
   assertCargoAvailable,
   compileCrate,
@@ -16,11 +17,15 @@ import {
   ensureTsconfigOption,
   syncTypeDeclaration,
 } from "./codegen.ts";
-import { collectCrateInputs, findCargoToml, hashCrate } from "./crate.ts";
+import { findCargoToml, hashInputs } from "./crate.ts";
 import { dedupeInFlight } from "./dedupe.ts";
+import { resolveOptions, type RustPluginOptions } from "./options.ts";
+import { getToolchainKey, toolchainKeyString } from "./toolchain.ts";
+
+export type { RustPluginOptions } from "./options.ts";
 
 const RUST_QUERY = "?rust";
-const CACHE_SUBDIR = join("node_modules", ".cache", "vite-rust");
+const DEFAULT_CACHE_SUBDIR = join("node_modules", ".cache", "vite-rust");
 
 interface LoadOptions {
   ssr?: boolean;
@@ -32,8 +37,14 @@ interface LoadOptions {
  * `@napi-rs/cli`), content-hash caches it, and generates named-export JS that
  * loads the binary at runtime. Server-side only — see the `options.ssr` gate.
  */
-export function rustPlugin(): Plugin {
+export function rustPlugin(options?: RustPluginOptions): Plugin {
+  const opts = resolveOptions(options);
   let root = process.cwd();
+
+  const cacheBaseDir = (): string => {
+    if (!opts.cacheDir) return join(root, DEFAULT_CACHE_SUBDIR);
+    return isAbsolute(opts.cacheDir) ? opts.cacheDir : resolve(root, opts.cacheDir);
+  };
 
   return {
     name: "vite-rust",
@@ -41,7 +52,7 @@ export function rustPlugin(): Plugin {
 
     configResolved(config) {
       root = config.root;
-      ensureTsconfigOption(root);
+      if (opts.emitTypes) ensureTsconfigOption(root);
     },
 
     resolveId(source, importer) {
@@ -66,12 +77,12 @@ export function rustPlugin(): Plugin {
       return `${absPath}${RUST_QUERY}`;
     },
 
-    async load(id, options: LoadOptions | undefined) {
+    async load(id, loadOptions: LoadOptions | undefined) {
       if (!id.endsWith(`.rs${RUST_QUERY}`)) return null;
 
       // Client gate (load-bearing): a non-server module importing this `.rs`
       // would leak it toward the client graph, where `options.ssr` is false.
-      if (!options?.ssr) {
+      if (!loadOptions?.ssr) {
         return this.error(
           "Rust modules can only be imported server-side — import this only " +
             "from a .server.ts module (or another server-only module), never " +
@@ -91,39 +102,71 @@ export function rustPlugin(): Plugin {
         );
       }
 
-      const { binaryName, generatedMessage } = ensureCrateBinaryName(crateDir);
-      if (generatedMessage) this.warn(generatedMessage);
+      let binaryName: string;
+      try {
+        const config = ensureCrateBinaryName(crateDir, opts.generateCratePackageJson);
+        binaryName = config.binaryName;
+        if (config.generatedMessage) this.warn(config.generatedMessage);
+      } catch (err) {
+        return this.error((err as Error).message);
+      }
 
-      for (const input of collectCrateInputs(crateDir)) {
-        this.addWatchFile(input);
+      // Full local dependency closure (crate + path/workspace deps + workspace
+      // Cargo.toml + lockfile): fold every file into both the watch set and the
+      // cache hash so a sibling path-dep or lockfile change recompiles.
+      const inputs = await collectClosureInputs(crateDir, {
+        onWarn: (message) => this.warn(message),
+      });
+      for (const input of inputs) this.addWatchFile(input);
+
+      // Toolchain fingerprint in the key: a rustc / napi-cli upgrade invalidates
+      // even byte-identical sources. Resolve the CLI defensively so computing the
+      // key never hard-fails before the actual compile step.
+      let napiBin: string | null = null;
+      try {
+        napiBin = resolveNapiBin();
+      } catch {
+        napiBin = null;
+      }
+      const toolchain = toolchainKeyString(await getToolchainKey(napiBin));
+
+      let hash: string;
+      try {
+        hash = hashInputs(crateDir, inputs, toolchain);
+      } catch (err) {
+        return this.error((err as Error).message);
       }
 
       // Both profiles overwrite the same napi output path, so the profile is
       // part of the cache key and filename.
-      const hash = hashCrate(crateDir);
-      const release = this.meta.watchMode !== true;
+      const release =
+        opts.profile !== null
+          ? opts.profile === "release"
+          : this.meta.watchMode !== true;
       const profile = release ? "release" : "debug";
       const cachePath = join(
-        root,
-        CACHE_SUBDIR,
+        cacheBaseDir(),
         `${binaryName}-${hash}-${profile}.node`,
       );
 
       try {
         await dedupeInFlight(cachePath, async () => {
           if (existsSync(cachePath)) return;
-          const napiBin = resolveNapiBin();
+          const bin = napiBin ?? resolveNapiBin();
           await assertCargoAvailable();
-          process.stderr.write(
-            `[vite-rust] compiling crate "${binaryName}" (${profile}); ` +
-              "first build can take 30s+…\n",
-          );
+          if (opts.logLevel !== "silent") {
+            process.stderr.write(
+              `[vite-rust] compiling crate "${binaryName}" (${profile}); ` +
+                "first build can take 30s+…\n",
+            );
+          }
           await compileCrate({
-            napiBin,
+            napiBin: bin,
             crateDir,
             binaryName,
             release,
             cachePath,
+            napiArgs: opts.napiArgs,
           });
         });
       } catch (err) {
@@ -143,13 +186,17 @@ export function rustPlugin(): Plugin {
       // Types (PLAN step 7): mirror napi's generated `.d.ts` next to the `.rs`.
       // Prefer the hash-versioned copy so a cache hit syncs the .d.ts that
       // matches the cached binary, not whatever revision compiled last.
-      const versionedDts = `${cachePath}.d.ts`;
-      const generatedDts = existsSync(versionedDts)
-        ? versionedDts
-        : join(crateDir, "index.d.ts");
-      const anchorDts = rsPath.replace(/\.rs$/, ".d.rs.ts");
-      const wroteDts = syncTypeDeclaration(generatedDts, anchorDts);
-      if (wroteDts) this.info(`[vite-rust] wrote types → ${wroteDts}`);
+      if (opts.emitTypes) {
+        const versionedDts = `${cachePath}.d.ts`;
+        const generatedDts = existsSync(versionedDts)
+          ? versionedDts
+          : join(crateDir, "index.d.ts");
+        const anchorDts = rsPath.replace(/\.rs$/, ".d.rs.ts");
+        const wroteDts = syncTypeDeclaration(generatedDts, anchorDts);
+        if (wroteDts && opts.logLevel !== "silent") {
+          this.info(`[vite-rust] wrote types → ${wroteDts}`);
+        }
+      }
 
       if (this.meta.watchMode) {
         return devModuleSource(cachePath, keys);

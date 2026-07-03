@@ -1,5 +1,13 @@
 import { execFile } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -57,12 +65,25 @@ export interface CrateConfig {
  * napi v3 refuses to build without a `package.json` carrying a `napi.binaryName`
  * field in the crate dir. Ensure one exists (creating or augmenting immutably),
  * and return the binary name that determines the built `<binaryName>.node`.
+ *
+ * When `allowGenerate` is false, a missing/incomplete `package.json` is a hard
+ * error instead of a silent write into the user's crate.
  */
-export function ensureCrateBinaryName(crateDir: string): CrateConfig {
+export function ensureCrateBinaryName(
+  crateDir: string,
+  allowGenerate = true,
+): CrateConfig {
   const pkgPath = join(crateDir, "package.json");
   const dirName = basename(crateDir);
 
   if (!existsSync(pkgPath)) {
+    if (!allowGenerate) {
+      throw new Error(
+        `No package.json in crate "${crateDir}" and generateCratePackageJson ` +
+          `is disabled. Create one with { "napi": { "binaryName": "${dirName}" } }, ` +
+          "or set generateCratePackageJson: true.",
+      );
+    }
     const pkg = { name: dirName, napi: { binaryName: dirName } };
     writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
     return {
@@ -77,6 +98,15 @@ export function ensureCrateBinaryName(crateDir: string): CrateConfig {
   const existing = pkg.napi?.binaryName;
   if (typeof existing === "string" && existing.length > 0) {
     return { binaryName: existing, generatedMessage: null };
+  }
+
+  if (!allowGenerate) {
+    throw new Error(
+      `Crate "${crateDir}" has a package.json without napi.binaryName and ` +
+        "generateCratePackageJson is disabled. Add " +
+        `{ "napi": { "binaryName": "${dirName}" } } to it, or set ` +
+        "generateCratePackageJson: true.",
+    );
   }
 
   const next = { ...pkg, napi: { ...pkg.napi, binaryName: dirName } };
@@ -94,6 +124,30 @@ export interface CompileParams {
   release: boolean;
   /** Hashed destination the built `.node` is copied to. */
   cachePath: string;
+  /** Extra args appended to `napi build` (from `RustPluginOptions.napiArgs`). */
+  napiArgs?: readonly string[];
+}
+
+/**
+ * Copy `src` to `dest` atomically: write to a per-writer temp file in the same
+ * directory, then `renameSync` into place. A concurrent reader (e.g. a second
+ * Vite process) never observes a partial file; the temp file is cleaned up if
+ * the rename throws, so success never leaves one behind. `tmpTag` scopes the
+ * temp name per process (defaults to the pid) so two writers never collide.
+ */
+export function atomicCopy(
+  src: string,
+  dest: string,
+  tmpTag: string = String(process.pid),
+): void {
+  const tmp = `${dest}.tmp-${tmpTag}`;
+  try {
+    copyFileSync(src, tmp);
+    renameSync(tmp, dest);
+  } catch (err) {
+    rmSync(tmp, { force: true });
+    throw err;
+  }
 }
 
 /**
@@ -103,9 +157,10 @@ export interface CompileParams {
  * so they are surfaced rather than buried.
  */
 export async function compileCrate(params: CompileParams): Promise<void> {
-  const { napiBin, crateDir, binaryName, release, cachePath } = params;
+  const { napiBin, crateDir, binaryName, release, cachePath, napiArgs = [] } = params;
   const args = ["build"];
   if (release) args.push("--release");
+  args.push(...napiArgs);
 
   try {
     await execFileAsync(process.execPath, [napiBin, ...args], {
@@ -131,12 +186,12 @@ export async function compileCrate(params: CompileParams): Promise<void> {
   }
 
   mkdirSync(dirname(cachePath), { recursive: true });
-  copyFileSync(builtPath, cachePath);
+  atomicCopy(builtPath, cachePath);
 
   // Version the generated .d.ts alongside the binary: on a cache hit the crate's
   // index.d.ts may belong to a different (later-compiled) source revision.
   const builtDts = join(crateDir, "index.d.ts");
-  if (existsSync(builtDts)) copyFileSync(builtDts, `${cachePath}.d.ts`);
+  if (existsSync(builtDts)) atomicCopy(builtDts, `${cachePath}.d.ts`);
 }
 
 function tailLines(text: string, count: number): string {

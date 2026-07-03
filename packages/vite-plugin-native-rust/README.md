@@ -27,6 +27,25 @@ export const digest = await hashChain(6_000_000);
 Rust modules are **server-only**: importing one from code that can reach the
 client bundle is a build error by design.
 
+## Options
+
+`rustPlugin(options?)` — every option is optional and the defaults reproduce the
+zero-argument behavior.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `cacheDir` | `string` | `node_modules/.cache/vite-rust` | Where compiled `.node` addons are cached. Relative paths resolve against the Vite root. |
+| `profile` | `'debug' \| 'release'` | auto | Force a build profile. Auto = `debug` in dev/watch, `release` in build. |
+| `napiArgs` | `string[]` | `[]` | Extra arguments appended to `napi build`. |
+| `generateCratePackageJson` | `boolean` | `true` | Write a `package.json` with `napi.binaryName` when the crate lacks one. `false` errors instead of mutating your crate. |
+| `emitTypes` | `boolean` | `true` | Mirror napi's generated types to a `.d.rs.ts` beside the imported `.rs`. |
+| `logLevel` | `'silent' \| 'info'` | `'info'` | `'silent'` suppresses the compile-progress and type-write lines; warnings and errors always show. |
+
+The cache key folds in the crate's full local dependency closure (path deps,
+workspace members, the workspace `Cargo.toml`, and the lockfile) plus the
+`rustc` and `@napi-rs/cli` versions, so a change anywhere in that set recompiles
+instead of serving a stale binary.
+
 ## Requirements
 
 - Node.js >= 20
