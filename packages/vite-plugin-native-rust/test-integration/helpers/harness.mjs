@@ -86,10 +86,15 @@ export function compileCount(text) {
  * accumulating stdout/stderr into `.output`. Returns a handle exposing the
  * live buffers plus `waitReady`, `waitExit`, and a group-wide `kill`.
  */
+// Vite/RR embed ANSI codes INSIDE the URL on colored terminals
+// ("http://localhost:\x1b[1m5173\x1b[22m/"), which breaks port regexes on CI.
+const ANSI = /\x1b\[[0-9;]*m/g;
+
 export function launch(cmd, args, { cwd, env } = {}) {
   const child = spawn(cmd, args, {
     cwd,
-    env: { ...process.env, ...env },
+    // NO_COLOR belt + ANSI-strip suspenders (see `output` getter).
+    env: { ...process.env, NO_COLOR: "1", FORCE_COLOR: "0", ...env },
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -99,7 +104,7 @@ export function launch(cmd, args, { cwd, env } = {}) {
     stdout: "",
     stderr: "",
     get output() {
-      return this.stdout + this.stderr;
+      return (this.stdout + this.stderr).replace(ANSI, "");
     },
   };
   child.stdout.on("data", (d) => (handle.stdout += d.toString()));

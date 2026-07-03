@@ -22,13 +22,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Build the shipped plugin artifact FIRST: the example's `react-router
+      # typegen` loads vite.config.ts, which imports the package's dist — a
+      # fresh checkout has no dist, so typecheck would crash inside esbuild.
+      - run: npm run build -w vite-plugin-native-rust
       # Typecheck fans out across workspaces (plugin + example). The example's
       # generated .d.rs.ts / index.d.ts are committed, so tsc resolves the `.rs`
       # imports without a cargo build here.
       - run: npm run typecheck
-      # Build the shipped plugin artifact (dist). The example's build needs
-      # cargo and is covered by the integration job instead.
-      - run: npm run build -w vite-plugin-native-rust
 
   unit:
     name: unit (${{ matrix.os }}, node ${{ matrix.node }})
@@ -36,8 +37,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Node 20 can't run the .ts unit tests (type stripping landed in 22.6);
+        # runtime support for 20 is proven by the node20-smoke job instead.
         os: [ubuntu-latest, macos-latest]
-        node: [20, 22, 24]
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -54,6 +57,26 @@ jobs:
       - name: Plugin unit tests
         run: npm test -w vite-plugin-native-rust
       - name: CLI tests
+        run: npm test -w create-native-rust
+
+  node20-smoke:
+    # engines claims node >=20: prove the SHIPPED artifacts run there. The .ts
+    # test sources need 22.6+ type stripping, but dist is plain ESM and the CLI
+    # is plain .mjs — both must work on 20.
+    name: node 20 smoke (dist + CLI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w vite-plugin-native-rust
+      - name: Dist smoke (import + construct plugin)
+        run: |
+          node -e "import('./packages/vite-plugin-native-rust/dist/index.js').then(m => { const p = m.rustPlugin({ logLevel: 'silent' }); if (p.name !== 'vite-rust' || typeof p.load !== 'function') throw new Error('bad plugin shape'); console.log('dist ok on', process.version); })"
+      - name: CLI tests (plain .mjs, includes scaffold assertions)
         run: npm test -w create-native-rust
 
   integration:
