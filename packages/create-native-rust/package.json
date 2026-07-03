@@ -1,0 +1,42 @@
+{
+  "name": "create-native-rust",
+  "version": "0.0.0",
+  "description": "Scaffold a napi-rs crate ready to import from Vite SSR server code with vite-plugin-native-rust.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Kade Angell",
+  "bin": {
+    "create-native-rust": "bin/create-native-rust.mjs"
+  },
+  "keywords": [
+    "create",
+    "scaffold",
+    "vite",
+    "vite-plugin",
+    "rust",
+    "napi",
+    "napi-rs",
+    "native",
+    "addon",
+    "ssr"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kadeangell/vite-plugin-native-rust.git",
+    "directory": "packages/create-native-rust"
+  },
+  "homepage": "https://github.com/kadeangell/vite-plugin-native-rust/tree/main/packages/create-native-rust#readme",
+  "bugs": {
+    "url": "https://github.com/kadeangell/vite-plugin-native-rust/issues"
+  },
+  "files": [
+    "bin",
+    "lib"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  }
+}
