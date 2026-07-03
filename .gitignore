@@ -4,7 +4,11 @@ node_modules/
 # Build output
 build/
 dist/
+dist-leak/
 .react-router/
+
+# Generated napi type declarations mirrored next to .rs imports
+*.d.rs.ts
 
 # Vercel
 .vercel/

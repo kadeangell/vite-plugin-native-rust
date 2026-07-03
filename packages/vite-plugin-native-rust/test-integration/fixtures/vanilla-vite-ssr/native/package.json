@@ -1,0 +1,8 @@
+{
+  "name": "vanilla_native",
+  "version": "0.0.0",
+  "private": true,
+  "napi": {
+    "binaryName": "vanilla_native"
+  }
+}

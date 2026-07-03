@@ -41,6 +41,8 @@
   "scripts": {
     "build": "tsup",
     "test": "node --test src/*.test.ts",
+    "pretest:integration": "npm run build && node test-integration/scripts/setup-fixtures.mjs",
+    "test:integration": "node --test --test-concurrency=1 \"test-integration/*.test.mjs\"",
     "typecheck": "tsc --noEmit"
   },
   "peerDependencies": {
@@ -48,6 +50,7 @@
     "@napi-rs/cli": ">=3"
   },
   "devDependencies": {
+    "@napi-rs/cli": "^3.7.2",
     "@types/node": "^24.0.0",
     "tsup": "^8.3.5",
     "typescript": "^5.9.3",

@@ -11,7 +11,8 @@
   },
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "examples/*",
+    "packages/vite-plugin-native-rust/test-integration/fixtures/vanilla-vite-ssr"
   ],
   "engines": {
     "node": ">=20"
@@ -20,6 +21,7 @@
     "build": "npm run build -w vite-plugin-native-rust && npm run build -w example-react-router",
     "build:plugin": "npm run build -w vite-plugin-native-rust",
     "test": "npm test -w vite-plugin-native-rust",
+    "test:integration": "npm run test:integration -w vite-plugin-native-rust",
     "typecheck": "npm run typecheck --workspaces --if-present"
   }
 }

@@ -1,0 +1,14 @@
+{
+  "name": "fixture-vanilla-vite-ssr",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture: bare Vite SSR (no framework) importing a Rust crate.",
+  "dependencies": {
+    "vite-plugin-native-rust": "*",
+    "vite": "^6.4.3"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.7.2"
+  }
+}
