@@ -1,0 +1,56 @@
+{
+  "name": "vite-plugin-native-rust",
+  "version": "0.0.0",
+  "description": "Import Rust directly in Vite SSR server code — compiles napi-rs crates to native addons with caching, types, and zero-config deploys.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Kade Angell",
+  "keywords": [
+    "vite",
+    "vite-plugin",
+    "rust",
+    "napi",
+    "napi-rs",
+    "native",
+    "addon",
+    "ssr",
+    "server"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kadeangell/vite-plugin-native-rust.git",
+    "directory": "packages/vite-plugin-native-rust"
+  },
+  "homepage": "https://github.com/kadeangell/vite-plugin-native-rust#readme",
+  "bugs": {
+    "url": "https://github.com/kadeangell/vite-plugin-native-rust/issues"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "vite": ">=6",
+    "@napi-rs/cli": ">=3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3"
+  }
+}
