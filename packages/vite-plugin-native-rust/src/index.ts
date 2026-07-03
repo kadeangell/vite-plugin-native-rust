@@ -50,6 +50,15 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
     name: "vite-rust",
     enforce: "pre",
 
+    config() {
+      // The native `.node` is emitted as an asset into the SSR bundle, but Vite
+      // drops SSR-build assets unless `ssrEmitAssets` is set — so a bare
+      // `vite build --ssr` would ship a server that can't find its addon.
+      // Frameworks (React Router) wire this up themselves; we guarantee it for
+      // everyone. User config still wins if they set it explicitly.
+      return { build: { ssrEmitAssets: true } };
+    },
+
     configResolved(config) {
       root = config.root;
       if (opts.emitTypes) ensureTsconfigOption(root);
