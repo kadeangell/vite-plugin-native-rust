@@ -40,9 +40,10 @@ jobs:
 
       - run: npm ci
 
-      # Full green gate before anything is published.
-      - run: npm run typecheck
+      # Full green gate before anything is published. Build dist first: the
+      # example's typegen loads vite.config.ts, which imports the built package.
       - run: npm run build -w vite-plugin-native-rust
+      - run: npm run typecheck
       - run: npm test -w vite-plugin-native-rust
       - run: npm test -w create-native-rust
       - run: npm run test:integration -w vite-plugin-native-rust
