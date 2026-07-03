@@ -1,0 +1,62 @@
+name: Release
+
+# Publishes both packages to npm with provenance. Trigger by pushing a version
+# tag (`git tag v0.1.0 && git push --tags`) or via the Actions "Run workflow"
+# button (workflow_dispatch) for a dry run / manual publish.
+#
+# SETUP REQUIRED (one-time, by a repo admin — this workflow does NOT create it):
+#   Add an npm automation token as the `NPM_TOKEN` repository secret
+#   (Settings → Secrets and variables → Actions). It needs publish rights to
+#   both `vite-plugin-native-rust` and `create-native-rust`. `id-token: write`
+#   below enables npm provenance; keep the token as a fallback for auth.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and test only; skip npm publish"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance (--provenance)
+
+jobs:
+  release:
+    name: build, test & publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: npm ci
+
+      # Full green gate before anything is published.
+      - run: npm run typecheck
+      - run: npm run build -w vite-plugin-native-rust
+      - run: npm test -w vite-plugin-native-rust
+      - run: npm test -w create-native-rust
+      - run: npm run test:integration -w vite-plugin-native-rust
+
+      # Publish both packages. `npm publish` runs the package's own build
+      # (prepublishOnly/prepack) as configured; provenance ties the tarball to
+      # this workflow run. Skipped on a dry-run dispatch.
+      - name: Publish vite-plugin-native-rust
+        if: github.event_name == 'push' || inputs.dry_run == false
+        run: npm publish --provenance --access public -w vite-plugin-native-rust
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish create-native-rust
+        if: github.event_name == 'push' || inputs.dry_run == false
+        run: npm publish --provenance --access public -w create-native-rust
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

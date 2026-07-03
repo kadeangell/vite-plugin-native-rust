@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push to the same ref supersedes in-flight runs.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: lint & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Typecheck fans out across workspaces (plugin + example). The example's
+      # generated .d.rs.ts / index.d.ts are committed, so tsc resolves the `.rs`
+      # imports without a cargo build here.
+      - run: npm run typecheck
+      # Build the shipped plugin artifact (dist). The example's build needs
+      # cargo and is covered by the integration job instead.
+      - run: npm run build -w vite-plugin-native-rust
+
+  unit:
+    name: unit (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      # Unit tests tolerate a missing toolchain (rustc/napi resolution degrades
+      # to sentinels), but installing Rust on one lane lets the CLI's real
+      # end-to-end `napi build` test run instead of self-skipping.
+      - name: Install Rust (one lane)
+        if: matrix.os == 'ubuntu-latest' && matrix.node == '22'
+        uses: dtolnay/rust-toolchain@stable
+      - run: npm ci
+      - name: Plugin unit tests
+        run: npm test -w vite-plugin-native-rust
+      - name: CLI tests
+        run: npm test -w create-native-rust
+
+  integration:
+    name: integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      # Cache the cargo registry + each fixture crate's target dir so warm runs
+      # skip recompiling. The crates are separate (not one cargo workspace), so
+      # they are listed explicitly.
+      - name: Cache cargo + crate targets
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            examples/react-router/native -> target
+            packages/vite-plugin-native-rust/test-integration/fixtures/vanilla-vite-ssr/native -> target
+            packages/vite-plugin-native-rust/test-integration/fixtures/react-router-v8/native -> target
+      - run: npm ci
+      # One integration run spans the plugin's whole supported Vite range: the
+      # RR v7 example and vanilla fixture run Vite 6, the RR v8 fixture runs
+      # Vite 8 (Environment API) — so no separate Vite-version axis is needed.
+      # pretest:integration builds dist and installs the isolated RR v8 fixture.
+      - name: Integration suite
+        run: npm run test:integration -w vite-plugin-native-rust
