@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.2.0 (2026-07-06)
+
+### vite-plugin-native-rust
+
+- Feature ([#2](https://github.com/kadeangell/vite-plugin-native-rust/issues/2)):
+  first-class **vitest** support. `rustPlugin()` now works inside a vitest config
+  with zero extra options — a `.rs` import no longer parse-fails at collection.
+  When it detects vitest (via `process.env.VITEST` or a resolved config carrying
+  a `test` key), the plugin: **bypasses the client-graph gate** (tests run in
+  Node — jsdom/happy-dom only emulate the DOM in-process — so the gate that keeps
+  `.node` binaries out of the browser bundle protects nothing and would otherwise
+  reject legitimate `ssr: false` test imports); **always emits the dev-shape
+  loader** that requires the addon from its absolute cache path (vitest never
+  writes a bundle, so the build-shape `ROLLUP_FILE_URL` token would resolve to
+  nothing — and vitest reports `this.meta.watchMode === false` under *both*
+  `vitest run` and `vitest --watch`, so the plugin can't lean on watch mode
+  here); **compiles in debug** unless `profile: 'release'` is pinned; and **skips
+  the `.d.rs.ts` write** (an editor concern that would only risk watch churn and
+  cross-project races mid-test-run). Works under `vitest run`, watch mode, and
+  `test.projects`.
+- New public API: **`rustTestStub(mapping)`** — an `enforce: 'pre'` plugin whose
+  `resolveId` redirects any import ending with a mapping key to a JS twin
+  (resolved against the Vite root or an absolute path). For suites that should
+  run without a Rust toolchain (CI without cargo) or that deliberately isolate
+  from the native code. Exported from the package root alongside `rustPlugin`.
+- New integration fixture `vitest-consumer` (vitest 4 / rolldown-vite on Vite 8)
+  exercises both paths end-to-end: a jsdom project importing the crate through
+  `rustPlugin()` (asserts the real Rust output) and a `test.projects` sibling
+  using `rustTestStub` against a JS twin, both under `vitest run`.
+- Docs: new [testing.md](docs/testing.md) covering the viral collection failure,
+  both fix paths, and the `test.projects` recipe.
+
 ## 0.1.2 (2026-07-06)
 
 ### vite-plugin-native-rust

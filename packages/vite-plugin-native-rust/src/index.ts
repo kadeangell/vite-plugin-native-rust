@@ -22,9 +22,16 @@ import { findCargoToml, hashInputs } from "./crate.ts";
 import { dedupeInFlight } from "./dedupe.ts";
 import { ensureAddonsBesideChunks, type EmittedAddon } from "./output.ts";
 import { resolveOptions, type RustPluginOptions } from "./options.ts";
+import {
+  isVitest,
+  resolveRelease,
+  shouldBypassSsrGate,
+  shouldUseDevShape,
+} from "./vitest.ts";
 import { getToolchainKey, toolchainKeyString } from "./toolchain.ts";
 
 export type { RustPluginOptions } from "./options.ts";
+export { rustTestStub } from "./stub.ts";
 
 const RUST_QUERY = "?rust";
 const DEFAULT_CACHE_SUBDIR = join("node_modules", ".cache", "vite-rust");
@@ -42,6 +49,10 @@ interface LoadOptions {
 export function rustPlugin(options?: RustPluginOptions): Plugin {
   const opts = resolveOptions(options);
   let root = process.cwd();
+  // Set in `configResolved`: the plugin is running inside a vitest pipeline, so
+  // the client-graph gate and build-shape codegen are both wrong here (tests run
+  // in Node; no bundle is written). See ./vitest.ts and docs/testing.md.
+  let underVitest = false;
 
   // Every `.node` this plugin emitted during the build, keyed by the asset
   // fileName. `writeBundle` uses these to guarantee each addon survives next to
@@ -68,7 +79,11 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
 
     configResolved(config) {
       root = config.root;
-      if (opts.emitTypes) ensureTsconfigOption(root);
+      underVitest = isVitest(config);
+      // Skip tsconfig mutation under vitest: it's an editor/typecheck concern,
+      // irrelevant to running tests, and writing during a test run risks
+      // watch-mode churn and races between per-project plugin instances.
+      if (opts.emitTypes && !underVitest) ensureTsconfigOption(root);
     },
 
     resolveId(source, importer) {
@@ -98,7 +113,11 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
 
       // Client gate (load-bearing): a non-server module importing this `.rs`
       // would leak it toward the client graph, where `options.ssr` is false.
-      if (!loadOptions?.ssr) {
+      // Bypassed under vitest — tests run in Node (jsdom/happy-dom only emulate
+      // the DOM in-process), so the gate would reject legitimate test imports
+      // (vitest reports ssr=false for web-style environments) while protecting
+      // nothing. See ./vitest.ts.
+      if (!shouldBypassSsrGate(underVitest, loadOptions?.ssr)) {
         return this.error(
           "Rust modules can only be imported server-side — import this only " +
             "from a .server.ts module (or another server-only module), never " +
@@ -154,11 +173,14 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
       }
 
       // Both profiles overwrite the same napi output path, so the profile is
-      // part of the cache key and filename.
-      const release =
-        opts.profile !== null
-          ? opts.profile === "release"
-          : this.meta.watchMode !== true;
+      // part of the cache key and filename. Under vitest the default is debug
+      // (fast compile), matching dev — a machine that built the crate once
+      // reuses that cached debug binary at zero compile cost.
+      const release = resolveRelease(
+        opts.profile,
+        this.meta.watchMode === true,
+        underVitest,
+      );
       const profile = release ? "release" : "debug";
       const cachePath = join(
         cacheBaseDir(),
@@ -201,8 +223,10 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
 
       // Types (PLAN step 7): mirror napi's generated `.d.ts` next to the `.rs`.
       // Prefer the hash-versioned copy so a cache hit syncs the .d.ts that
-      // matches the cached binary, not whatever revision compiled last.
-      if (opts.emitTypes) {
+      // matches the cached binary, not whatever revision compiled last. Skipped
+      // under vitest — writing a `.d.rs.ts` mid-test-run only risks watch churn
+      // and cross-project races; type declarations are a dev/editor concern.
+      if (opts.emitTypes && !underVitest) {
         const versionedDts = `${cachePath}.d.ts`;
         const generatedDts = existsSync(versionedDts)
           ? versionedDts
@@ -214,7 +238,10 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
         }
       }
 
-      if (this.meta.watchMode) {
+      // Dev shape (require from the absolute cache path) in Rollup watch mode
+      // and always under vitest: vitest never writes a bundle, so the
+      // build-shape ROLLUP_FILE_URL token would resolve to nothing.
+      if (shouldUseDevShape(underVitest, this.meta.watchMode === true)) {
         return devModuleSource(cachePath, keys);
       }
 

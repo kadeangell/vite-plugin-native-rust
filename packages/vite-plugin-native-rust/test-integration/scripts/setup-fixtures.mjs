@@ -25,6 +25,12 @@ const isolated = [
     dir: join(here, "..", "fixtures", "react-router-v7-vercel-preset"),
     marker: join("node_modules", "@vercel", "react-router"),
   },
+  {
+    // Issue #2 repro: vitest 4 (rolldown-vite) on Vite 8 importing a `.rs`
+    // crate through rustPlugin() and rustTestStub.
+    dir: join(here, "..", "fixtures", "vitest-consumer"),
+    marker: join("node_modules", "vitest"),
+  },
 ];
 
 if (!existsSync(distDir)) {

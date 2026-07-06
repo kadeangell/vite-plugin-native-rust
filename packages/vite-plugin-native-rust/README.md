@@ -1,6 +1,8 @@
 # vite-plugin-native-rust
 
-> **Experimental — 0.1.** The API may change before 0.2.
+> **Experimental — 0.2.** Still pre-1.0; the API may shift between minor
+> releases, with any change called out in the
+> [changelog](https://github.com/kadeangell/vite-plugin-native-rust/blob/main/CHANGELOG.md).
 
 Import Rust directly in Vite SSR server code:
 
@@ -95,6 +97,23 @@ workspace members, the workspace `Cargo.toml`, and the lockfile) plus the `rustc
 and `@napi-rs/cli` versions, so a change anywhere in that set recompiles instead
 of serving a stale binary.
 
+## Testing (vitest)
+
+vitest runs its own Vite pipeline, so a `.rs` import parse-fails at collection
+unless the plugin is in *that* config too. Add `rustPlugin()` to your
+`vitest.config.ts` (or each `test.projects` entry) to test the **real** compiled
+crate — it reuses the content-hash cache, so it's cheap after the first run. When
+you'd rather not compile Rust (CI without a toolchain), `rustTestStub({ … })`
+redirects `.rs` imports to a JS twin:
+
+```ts
+import { rustPlugin, rustTestStub } from "vite-plugin-native-rust";
+```
+
+Full recipes — including the viral-failure explanation and a `test.projects`
+example — are in
+[testing.md](https://github.com/kadeangell/vite-plugin-native-rust/blob/main/docs/testing.md).
+
 ## Documentation
 
 Full docs live in the
@@ -102,6 +121,7 @@ Full docs live in the
 
 - [How it works](https://github.com/kadeangell/vite-plugin-native-rust/blob/main/docs/how-it-works.md)
 - [TypeScript](https://github.com/kadeangell/vite-plugin-native-rust/blob/main/docs/typescript.md)
+- [Testing with vitest](https://github.com/kadeangell/vite-plugin-native-rust/blob/main/docs/testing.md)
 - [Deploying to Vercel](https://github.com/kadeangell/vite-plugin-native-rust/blob/main/docs/deployment-vercel.md)
 - [Benchmarks](https://github.com/kadeangell/vite-plugin-native-rust/blob/main/docs/benchmarks.md)
 - [Troubleshooting](https://github.com/kadeangell/vite-plugin-native-rust/blob/main/docs/troubleshooting.md)

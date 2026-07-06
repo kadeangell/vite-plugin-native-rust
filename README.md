@@ -1,6 +1,6 @@
 # vite-plugin-native-rust
 
-> **Experimental — 0.1.** The API may change before 0.2. See the [supported matrix](#supported).
+> **Experimental — 0.2.** Still pre-1.0; the API may shift between minor releases, with any change called out in the [changelog](CHANGELOG.md). See the [supported matrix](#supported).
 
 Import Rust directly in Vite SSR server code. Write
 
@@ -152,6 +152,7 @@ instead of serving a stale binary.
 | --- | --- |
 | [how-it-works.md](docs/how-it-works.md) | The resolve → load → compile → cache → emit pipeline, and why it survives bundling and serverless tracing. |
 | [typescript.md](docs/typescript.md) | `allowArbitraryExtensions`, the generated `.d.rs.ts`, committing types for CI, and proof the types are real. |
+| [testing.md](docs/testing.md) | The vitest story: `rustPlugin()` in the vitest config, the `rustTestStub` JS-twin helper, and the `test.projects` setup. |
 | [deployment-vercel.md](docs/deployment-vercel.md) | `vercelPreset`, the install/build scripts, the toolchain reality, cache strategy, and monorepo notes. |
 | [benchmarks.md](docs/benchmarks.md) | Both measurement sets in full, methodology, and the serverless fan-out correction. |
 | [troubleshooting.md](docs/troubleshooting.md) | Every real failure mode and its fix. |

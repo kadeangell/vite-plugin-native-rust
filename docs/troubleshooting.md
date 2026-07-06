@@ -109,6 +109,25 @@ identical.
 **Fix:** none needed. If you ever want a clean slate anyway, delete
 `node_modules/.cache/vite-rust` (or your configured `cacheDir`).
 
+## vitest: `Parse failure` on a `.rs` import at collection
+
+**Symptom:** a vitest suite dies before any assertion with a parse error like
+`RolldownError: Parse failure … 1: use std::collections::HashMap;` pointing at
+your `.rs` file — and it takes out tests that don't obviously touch Rust.
+
+**Cause:** vitest runs its own Vite pipeline with its own config. If the plugin
+isn't in *that* config, vitest feeds the raw Rust source to its parser. The
+failure is **viral**: any test whose module graph transitively reaches a `.rs`
+import breaks at collection, not just the module under test.
+
+**Fix:** give vitest a `.rs` story — add `rustPlugin()` to your vitest config to
+test the real compiled crate (it reuses the content-hash cache, so it's cheap
+after the first run), or use the shipped `rustTestStub({ … })` helper to redirect
+`.rs` imports to a JS twin when you have no toolchain. With `test.projects`, wire
+the plugin into **each** project's `plugins` array — projects don't inherit
+root-level `plugins`/`resolve`. Full recipes, including a two-project example,
+are in [testing.md](testing.md).
+
 ## "Rust modules can only be imported server-side"
 
 **Symptom:** a build error:
