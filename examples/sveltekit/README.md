@@ -86,15 +86,22 @@ scaffolded with `npm create native-rust`.
   `.svelte-kit/output/server/entries/pages/sveltedemo-<hash>.node` alongside
   the real one at `.svelte-kit/output/server/`. It comes from the plugin's
   post-write guarantee, which assumes chunks resolve the addon as a *sibling*,
-  while SvelteKit's nested chunk layout references it via `../../`. The copy is
-  never traced into the deployed function — it's ~500 kB of dead weight in the
-  local build dir only.
+  while SvelteKit's nested chunk layout references it via `../../`. You'll see
+  a `[vite-rust] recovered dropped addon …` log line during `vite build` — in
+  this layout it's a false alarm, and the extra copy is never traced into the
+  deployed function. It's ~500 kB of dead weight in the local build dir only.
 - **Prerendering must stay off for Rust routes.** SvelteKit's default is
   already `prerender = false`; if you enable prerendering globally, exclude any
   route whose `load` calls Rust at request time (or accept build-time-frozen
   values).
 
 ## Vercel deploy
+
+Live at **https://vpnr-example-sveltekit.vercel.app** — the page returns the
+Rust values (5 / 500500) from a `nodejs24.x` function; the deployed build log
+shows the crate compiling on-target
+(`[vite-rust] compiling crate "sveltedemo" (release)`) and warm requests answer
+in ~0.5s wall with ~0.1ms spent in the Rust calls.
 
 Project `vpnr-example-sveltekit`, Root Directory `examples/sveltekit` with
 "Include source files outside of the Root Directory" enabled (the example lives
