@@ -66,7 +66,15 @@ export function ensureAddonsBesideChunks(
 
     for (const chunk of referencing) {
       const chunkAbs = join(outDir, chunk.fileName);
-      const expected = join(dirname(chunkAbs), addon.fileName);
+      // Resolve the path the chunk ACTUALLY references. Rollup renders a
+      // sibling ("<name>.node"), but rolldown/nested layouts render relative
+      // paths like "../../<name>.node" — assuming siblinghood there produced
+      // false "recovered dropped addon" alarms and redundant copies (found by
+      // the Astro + SvelteKit examples on Vite 8). Fall back to the sibling
+      // assumption only when no URL-style reference can be parsed.
+      const relRef =
+        parseUrlReference(chunk.code as string, addon.fileName) ?? addon.fileName;
+      const expected = join(dirname(chunkAbs), relRef);
       if (fs.existsSync(expected)) continue;
 
       const source = resolveCopySource(outDir, bundle, addon, fs);
@@ -87,6 +95,20 @@ export function ensureAddonsBesideChunks(
   }
 
   return placements;
+}
+
+/**
+ * Extract the relative path a chunk uses to reference the addon, from the
+ * rendered `new URL("<relpath>", import.meta.url)` expression. Returns the
+ * relpath (e.g. `"../../name.node"` or `"name.node"`), or null when no
+ * URL-style reference is present (caller falls back to sibling placement).
+ */
+export function parseUrlReference(code: string, fileName: string): string | null {
+  const escaped = fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = code.match(
+    new RegExp(`new URL\\((["'])([^"']*?${escaped})\\1`),
+  );
+  return match ? match[2] : null;
 }
 
 /**

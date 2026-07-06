@@ -115,3 +115,46 @@ test("assets and non-referencing chunks are ignored", () => {
   assert.deepEqual(placements, []);
   assert.deepEqual(fs.copies, []);
 });
+
+test("resolves a parent-relative reference instead of assuming siblinghood (rolldown layout)", () => {
+  // rolldown emits the addon at the output root; the chunk in chunks/ points at "../<name>.node".
+  const atRoot = join(OUT, ADDON);
+  const fs = fakeFs([atRoot]);
+  const bundle = {
+    "chunks/page.js": chunk("chunks/page.js", `new URL("../${ADDON}", import.meta.url)`),
+  };
+
+  const placements = ensureAddonsBesideChunks(OUT, bundle, [addon], fs);
+
+  // The referenced path exists at the root — no false alarm, no duplicate copy.
+  assert.deepEqual(placements, []);
+  assert.deepEqual(fs.copies, []);
+});
+
+test("resolves a deep parent-relative reference (sveltekit nested entries)", () => {
+  const atRoot = join(OUT, ADDON);
+  const fs = fakeFs([atRoot]);
+  const bundle = {
+    "entries/pages/_page.server.ts.js": chunk(
+      "entries/pages/_page.server.ts.js",
+      `const a = require(fileURLToPath(new URL("../../${ADDON}", import.meta.url).href));`,
+    ),
+  };
+
+  assert.deepEqual(ensureAddonsBesideChunks(OUT, bundle, [addon], fs), []);
+  assert.deepEqual(fs.copies, []);
+});
+
+test("recovery copy lands at the actually-referenced path, not the sibling", () => {
+  // Referenced at "../<name>.node" but missing there → copy goes to the root, not chunks/.
+  const fs = fakeFs([CACHE]);
+  const bundle = {
+    "chunks/page.js": chunk("chunks/page.js", `new URL("../${ADDON}", import.meta.url)`),
+  };
+
+  const placements = ensureAddonsBesideChunks(OUT, bundle, [addon], fs);
+
+  const expected = join(OUT, ADDON);
+  assert.deepEqual(placements, [{ chunk: "chunks/page.js", addon: ADDON, to: expected }]);
+  assert.deepEqual(fs.copies, [[CACHE, expected]]);
+});

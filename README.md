@@ -65,14 +65,17 @@ correction told straight.
 
 | | |
 | --- | --- |
-| Vite | >= 6 (peer dependency) |
-| Frameworks | React Router v7 / v8, vanilla Vite SSR |
+| Vite | >= 6 (peer dependency; Vite 8 / rolldown validated) |
+| Frameworks | React Router v7 / v8, vanilla Vite SSR, SvelteKit, Astro |
 | OS | macOS, Linux |
 | Node | >= 20 |
 | Build-time | Rust toolchain (`cargo` on `PATH`) + `@napi-rs/cli` >= 3 |
 
 **Windows support is not planned.** Deno, Bun, and edge runtimes are out of scope —
-see [docs/when-not-to-use.md](docs/when-not-to-use.md).
+see [docs/when-not-to-use.md](docs/when-not-to-use.md). Next.js and Remix v3
+don't run Vite, so the plugin can't apply there — but the same napi-rs crate
+works directly; see [examples/nextjs](examples/nextjs) and
+[examples/remix-v3](examples/remix-v3) for the plugin-free pattern.
 
 ## Quickstart
 
@@ -162,7 +165,13 @@ instead of serving a stale binary.
 
 - **[`vite-plugin-native-rust`](packages/vite-plugin-native-rust)** — the Vite plugin.
 - **[`create-native-rust`](packages/create-native-rust)** — the `npm create native-rust` scaffolding CLI.
-- **[`examples/react-router`](examples/react-router)** — a runnable React Router v7 app with the Rust A/B routes and Vercel wiring.
+- **[`examples/react-router`](examples/react-router)** — React Router v7 app with the Rust A/B routes and Vercel wiring.
+- **[`examples/sveltekit`](examples/sveltekit)** — SvelteKit + adapter-vercel; plugin works out of the box (Vite 8 / rolldown).
+- **[`examples/astro`](examples/astro)** — Astro SSR + @astrojs/vercel; plugin works out of the box.
+- **[`examples/nextjs`](examples/nextjs)** — Next.js has no Vite: the same crate consumed directly, with the Turbopack + file-tracing workarounds documented.
+- **[`examples/remix-v3`](examples/remix-v3)** — Remix v3 (beta) has no Vite or build step: direct crate consumption + the serverless bundling recipe.
+
+All five examples deploy to Vercel and are validated against live production URLs.
 
 ## Contributing
 

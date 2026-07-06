@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.1 (2026-07-07)
+
+### vite-plugin-native-rust
+
+- Fix: the `writeBundle` addon guarantee now resolves the path each chunk
+  actually references (`new URL("../…​.node", import.meta.url)`) instead of
+  assuming the addon is a sibling. Under Vite 8 / rolldown layouts (Astro,
+  SvelteKit) the old assumption fired a false "recovered dropped addon"
+  warning and wrote a redundant copy on every build; recovery copies now
+  also land at the genuinely referenced path.
+
+### examples
+
+- Four new examples, all deployed + validated on Vercel: `sveltekit` and
+  `astro` (plugin works out of the box, first Vite 8/rolldown validation),
+  `nextjs` and `remix-v3` (no Vite in those frameworks — same napi-rs crate
+  consumed directly, with the required file-tracing/bundler workarounds
+  documented).
+
 ## 0.2.0 (2026-07-06)
 
 ### vite-plugin-native-rust

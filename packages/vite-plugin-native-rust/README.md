@@ -40,7 +40,9 @@ methodology and the honest serverless caveats are in the
 - A Rust toolchain (`cargo` on `PATH`; install from <https://rustup.rs>)
 - macOS or Linux — **Windows support is not planned**
 
-Supported frameworks: React Router v7 / v8 and vanilla Vite SSR.
+Supported frameworks: React Router v7 / v8, vanilla Vite SSR, SvelteKit, and
+Astro (Vite 8 / rolldown validated). Next.js and Remix v3 don't run Vite — see
+the repo's examples for the plugin-free pattern with the same crate.
 
 ## Quickstart
 
