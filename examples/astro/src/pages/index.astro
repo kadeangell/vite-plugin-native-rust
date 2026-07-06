@@ -1,0 +1,42 @@
+---
+import { add, sumTo } from "../lib/rust.server";
+
+// Frontmatter runs on the server for every request (output: "server", no
+// prerendering) — both calls below execute inside the deployed function.
+const start = performance.now();
+const five = add(2, 3); // sync, on the main thread
+const total = await sumTo(1_000); // async, on napi-rs's worker pool
+const elapsedMs = (performance.now() - start).toFixed(2);
+const renderedAt = new Date().toISOString();
+---
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Astro + vite-plugin-native-rust</title>
+  </head>
+  <body style="font-family: system-ui, sans-serif; padding: 2rem; max-width: 42rem; margin: 0 auto;">
+    <h1>Astro + Rust, server-rendered</h1>
+    <p>
+      This page's frontmatter imports
+      <code>native/src/lib.rs</code> and calls the compiled napi-rs addon on
+      every request:
+    </p>
+    <ul>
+      <li><code>add(2, 3)</code> = <strong id="add-result">{five}</strong></li>
+      <li>
+        <code>await sumTo(1000)</code> =
+        <strong id="sumto-result">{total}</strong>
+      </li>
+    </ul>
+    <p>
+      Both calls took <strong>{elapsedMs}ms</strong>. Rendered at
+      <code>{renderedAt}</code> (changes every request — proof this is
+      on-demand, not prerendered).
+    </p>
+    <p>
+      JSON version: <a href="/api/rust.json"><code>/api/rust.json</code></a>
+    </p>
+  </body>
+</html>

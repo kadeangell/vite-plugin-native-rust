@@ -1,0 +1,8 @@
+{
+  "name": "astrodemo",
+  "version": "0.0.0",
+  "private": true,
+  "napi": {
+    "binaryName": "astrodemo"
+  }
+}
