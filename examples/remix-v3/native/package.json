@@ -1,0 +1,8 @@
+{
+  "name": "remixdemo",
+  "version": "0.0.0",
+  "private": true,
+  "napi": {
+    "binaryName": "remixdemo"
+  }
+}

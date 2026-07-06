@@ -1,0 +1,24 @@
+{
+  "name": "example-remix-v3",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.3.0"
+  },
+  "scripts": {
+    "build:native": "cd native && napi build --release",
+    "build:vercel-bundle": "esbuild app/router.ts --bundle --platform=node --format=esm --outfile=dist/app.mjs --jsx=automatic --jsx-import-source=remix/ui --external:remix --external:remix/*",
+    "dev": "NODE_ENV=development node --watch --import remix/node-tsx server.ts",
+    "start": "NODE_ENV=production node --import remix/node-tsx server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "remix": "^3.0.0-beta.5"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.7.2",
+    "@types/node": "^24.0.0",
+    "esbuild": "^0.27.7",
+    "typescript": "^5.9.3"
+  }
+}
