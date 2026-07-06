@@ -1,0 +1,27 @@
+{
+  "name": "example-solidstart",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vinxi dev",
+    "build": "vinxi build",
+    "preview": "node scripts/serve-vercel-output.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@solidjs/meta": "^0.29.4",
+    "@solidjs/router": "^0.15.0",
+    "@solidjs/start": "^1.3.2",
+    "solid-js": "^1.9.5",
+    "vinxi": "^0.5.7",
+    "vite-plugin-native-rust": "*"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.7.2",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}

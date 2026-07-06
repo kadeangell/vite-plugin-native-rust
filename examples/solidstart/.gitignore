@@ -1,0 +1,6 @@
+.vinxi/
+.output/
+.nitro/
+.vercel/
+dist/
+node_modules/
