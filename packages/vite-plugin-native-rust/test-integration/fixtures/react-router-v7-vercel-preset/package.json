@@ -1,0 +1,27 @@
+{
+  "name": "fixture-react-router-v7-vercel-preset",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Integration fixture reproducing issue #1: React Router v7 on Vite 8 with @vercel/react-router's vercelPreset(). The preset splits the server build into per-function bundles (build/server/nodejs_*/); this fixture guards that the emitted .node addon survives into each bundle that references it. Installed in isolation so it can run Vite 8 without conflicting with the vite-6 example.",
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "start": "react-router-serve ./build/server/index.js"
+  },
+  "dependencies": {
+    "@react-router/node": "~7.18.1",
+    "@react-router/serve": "~7.18.1",
+    "isbot": "^5.1.40",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-router": "~7.18.1",
+    "vite-plugin-native-rust": "file:../../.."
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.7.2",
+    "@react-router/dev": "~7.18.1",
+    "@vercel/react-router": "^1.1.2",
+    "vite": "^8.1.3"
+  }
+}

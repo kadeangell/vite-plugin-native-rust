@@ -19,6 +19,12 @@ const isolated = [
     dir: join(here, "..", "fixtures", "react-router-v8"),
     marker: join("node_modules", "react-router"),
   },
+  {
+    // Issue #1 repro: RR v7 on Vite 8 with @vercel/react-router's vercelPreset()
+    // (per-function server bundles under build/server/nodejs_*/).
+    dir: join(here, "..", "fixtures", "react-router-v7-vercel-preset"),
+    marker: join("node_modules", "@vercel", "react-router"),
+  },
 ];
 
 if (!existsSync(distDir)) {

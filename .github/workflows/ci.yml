@@ -103,6 +103,7 @@ jobs:
             examples/react-router/native -> target
             packages/vite-plugin-native-rust/test-integration/fixtures/vanilla-vite-ssr/native -> target
             packages/vite-plugin-native-rust/test-integration/fixtures/react-router-v8/native -> target
+            packages/vite-plugin-native-rust/test-integration/fixtures/react-router-v7-vercel-preset/native -> target
       - run: npm ci
       # One integration run spans the plugin's whole supported Vite range: the
       # RR v7 example and vanilla fixture run Vite 6, the RR v8 fixture runs

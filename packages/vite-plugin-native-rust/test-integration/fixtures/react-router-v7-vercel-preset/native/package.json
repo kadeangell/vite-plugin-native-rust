@@ -1,0 +1,8 @@
+{
+  "name": "rrvp_native",
+  "version": "0.0.0",
+  "private": true,
+  "napi": {
+    "binaryName": "rrvp_native"
+  }
+}
