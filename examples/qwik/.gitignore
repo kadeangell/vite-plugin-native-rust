@@ -1,0 +1,6 @@
+dist/
+server/
+tmp/
+.vercel/
+node_modules/
+*.tsbuildinfo
