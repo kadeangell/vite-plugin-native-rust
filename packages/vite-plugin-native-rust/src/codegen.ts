@@ -5,50 +5,100 @@ import { join } from "node:path";
 const require = createRequire(import.meta.url);
 const VALID_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
+/** A named export of the addon, plus whether it is callable. */
+export interface AddonExport {
+  key: string;
+  /** `true` for napi functions (the common case) → lazy call-site wrappers. */
+  isFunction: boolean;
+}
+
 /**
  * Load the freshly built addon in the plugin process (same platform, ground
- * truth) and return the exported keys that are valid JS identifiers. napi
- * lowercases snake_case to camelCase, so these already match the generated
- * `.d.ts` names.
+ * truth) and return the exported keys that are valid JS identifiers, tagged
+ * with whether each is callable. napi lowercases snake_case to camelCase, so
+ * these already match the generated `.d.ts` names.
  */
-export function enumerateExports(nodePath: string): string[] {
+export function enumerateExports(nodePath: string): AddonExport[] {
   // Hashed paths are unique per source revision, but drop any stale cache entry
   // defensively so a rebuilt addon at the same path is re-read.
   delete require.cache[nodePath];
   const addon = require(nodePath) as Record<string, unknown>;
-  return Object.keys(addon).filter((key) => VALID_IDENTIFIER.test(key));
-}
-
-function exportLines(keys: string[]): string {
-  return keys.map((key) => `export const ${key} = addon.${key};`).join("\n");
+  return Object.keys(addon)
+    .filter((key) => VALID_IDENTIFIER.test(key))
+    .map((key) => ({ key, isFunction: typeof addon[key] === "function" }));
 }
 
 /**
  * Dev module shape: require the addon straight from its absolute cache path.
  * Vite/Rollup do not trace `createRequire`-created functions, so the binary is
- * left out of the bundle.
+ * left out of the bundle. Dev loads eagerly — the cache path is written before
+ * this module ever runs, so there is nothing to guard against.
  */
-export function devModuleSource(cachePath: string, keys: string[]): string {
-  return `${[
+export function devModuleSource(cachePath: string, exports: AddonExport[]): string {
+  const lines = [
     `import { createRequire } from "node:module";`,
     `const require = createRequire(import.meta.url);`,
     `const addon = require(${JSON.stringify(cachePath)});`,
-    exportLines(keys),
-  ].join("\n")}\n`;
+    ...exports.map((e) => `export const ${e.key} = addon.${e.key};`),
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+const TROUBLESHOOTING_URL =
+  "https://github.com/kadeangell/vite-plugin-native-rust/blob/main/docs/troubleshooting.md";
+
+/**
+ * The lazy loader shared by every build-mode module: resolves the addon path
+ * from Rollup's file-URL token (relative to whichever chunk it lands in) and
+ * requires it on first use, memoizing the result. A missing binary throws an
+ * actionable error *at the point of use* — not at module init — so a consumer's
+ * try/catch can catch it instead of the whole serverless function cold-starting
+ * into an uncatchable crash (issue #1).
+ */
+function loaderPreamble(refId: string): string[] {
+  return [
+    `import { createRequire } from "node:module";`,
+    `import { fileURLToPath } from "node:url";`,
+    `const require = createRequire(import.meta.url);`,
+    `const __vrPath = fileURLToPath(import.meta.ROLLUP_FILE_URL_${refId});`,
+    `let __vrAddon;`,
+    `function __vrLoad() {`,
+    `  if (__vrAddon) return __vrAddon;`,
+    `  try {`,
+    `    __vrAddon = require(__vrPath);`,
+    `  } catch (err) {`,
+    `    throw new Error(`,
+    `      "[vite-plugin-native-rust] the native addon was not found next to " +`,
+    `        "the server bundle (expected \\"" + __vrPath + "\\"). The compiled " +`,
+    `        ".node was not shipped with this build output — see " +`,
+    `        ${JSON.stringify(TROUBLESHOOTING_URL)} + ". Original error: " +`,
+    `        (err && err.message ? err.message : String(err)),`,
+    `      { cause: err },`,
+    `    );`,
+    `  }`,
+    `  return __vrAddon;`,
+    `}`,
+  ];
 }
 
 /**
  * Build module shape: reference the emitted asset via Rollup's file-URL token
  * so the require path is relative to whichever server chunk it lands in.
+ *
+ * Function exports become call-site wrappers that load the addon on first
+ * invocation (preserving async return values — the wrapper returns the
+ * underlying call's result). Non-function exports (rare for napi) load eagerly,
+ * but through the same guarded loader so a missing binary still yields the
+ * actionable error rather than a bare `Cannot find module`.
  */
-export function buildModuleSource(refId: string, keys: string[]): string {
-  return `${[
-    `import { createRequire } from "node:module";`,
-    `import { fileURLToPath } from "node:url";`,
-    `const require = createRequire(import.meta.url);`,
-    `const addon = require(fileURLToPath(import.meta.ROLLUP_FILE_URL_${refId}));`,
-    exportLines(keys),
-  ].join("\n")}\n`;
+export function buildModuleSource(refId: string, exports: AddonExport[]): string {
+  const exportLines = exports.map((e) =>
+    e.isFunction
+      ? `export const ${e.key} = (...args) => __vrLoad().${e.key}(...args);`
+      : `export const ${e.key} = __vrLoad().${e.key};`,
+  );
+  const lines = [...loaderPreamble(refId), ...exportLines];
+  return `${lines.join("\n")}\n`;
 }
 
 /**

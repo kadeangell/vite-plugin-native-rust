@@ -11,6 +11,7 @@ import {
   resolveNapiBin,
 } from "./compile.ts";
 import {
+  type AddonExport,
   buildModuleSource,
   devModuleSource,
   enumerateExports,
@@ -19,6 +20,7 @@ import {
 } from "./codegen.ts";
 import { findCargoToml, hashInputs } from "./crate.ts";
 import { dedupeInFlight } from "./dedupe.ts";
+import { ensureAddonsBesideChunks, type EmittedAddon } from "./output.ts";
 import { resolveOptions, type RustPluginOptions } from "./options.ts";
 import { getToolchainKey, toolchainKeyString } from "./toolchain.ts";
 
@@ -40,6 +42,11 @@ interface LoadOptions {
 export function rustPlugin(options?: RustPluginOptions): Plugin {
   const opts = resolveOptions(options);
   let root = process.cwd();
+
+  // Every `.node` this plugin emitted during the build, keyed by the asset
+  // fileName. `writeBundle` uses these to guarantee each addon survives next to
+  // the chunks that reference it (issue #1).
+  const emittedAddons = new Map<string, EmittedAddon>();
 
   const cacheBaseDir = (): string => {
     if (!opts.cacheDir) return join(root, DEFAULT_CACHE_SUBDIR);
@@ -182,7 +189,7 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
         return this.error((err as Error).message);
       }
 
-      let keys: string[];
+      let keys: AddonExport[];
       try {
         keys = enumerateExports(cachePath);
       } catch (err) {
@@ -211,12 +218,39 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
         return devModuleSource(cachePath, keys);
       }
 
+      const fileName = `${binaryName}-${hash}.node`;
       const refId = this.emitFile({
         type: "asset",
-        fileName: `${binaryName}-${hash}.node`,
+        fileName,
         source: readFileSync(cachePath),
       });
+      emittedAddons.set(fileName, { fileName, cachePath });
       return buildModuleSource(refId, keys);
+    },
+
+    // Safety net for post-processing that carries chunk code without the
+    // sibling asset (e.g. the @vercel/react-router preset's per-function
+    // repackaging): after the bundle is written, ensure every emitted `.node`
+    // exists next to each chunk that references it, copying from the compile
+    // cache when it doesn't — or failing loudly when it can't (issue #1).
+    writeBundle(outputOptions, bundle) {
+      if (emittedAddons.size === 0) return;
+      const outDir = outputOptions.dir;
+      if (!outDir) return;
+
+      const placements = ensureAddonsBesideChunks(
+        outDir,
+        bundle as Record<string, { type: string; fileName: string; code?: string }>,
+        [...emittedAddons.values()],
+      );
+      if (placements.length > 0 && opts.logLevel !== "silent") {
+        for (const p of placements) {
+          this.warn(
+            `[vite-rust] recovered dropped addon "${p.addon}" → "${p.to}" ` +
+              `(referenced by "${p.chunk}" but missing from the written output)`,
+          );
+        }
+      }
     },
   };
 }
