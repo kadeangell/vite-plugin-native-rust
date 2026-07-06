@@ -1,0 +1,24 @@
+{
+  "name": "example-astro",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "node scripts/serve-vercel-output.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@astrojs/vercel": "^11.0.2",
+    "astro": "^7.0.6",
+    "vite-plugin-native-rust": "*"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.7.2",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}
