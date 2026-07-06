@@ -1,0 +1,30 @@
+{
+  "name": "example-tanstack-start",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tanstack/react-router": "^1.170.17",
+    "@tanstack/react-start": "^1.168.27",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "vite-plugin-native-rust": "*"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.7.2",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.3",
+    "nitro": "^3.0.260610-beta",
+    "typescript": "^5.9.3",
+    "vite": "^8.1.3"
+  }
+}
