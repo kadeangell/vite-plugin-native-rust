@@ -115,9 +115,19 @@ server: {
   // 2.  After Nitro compiles, copy the addon from the ssr pass output into
   //     the function bundle. With a real `import.meta.url` the loader in
   //     chunks/nitro/nitro.mjs resolves `../<name>.node` → chunks/<name>.node.
-  hooks: {
-    compiled: async (nitro) => { /* copy .vinxi/build/ssr/*.node → chunks/ */ },
-  },
+  //     Registered as a Nitro *module*, NOT `hooks:` — a user-level
+  //     `hooks.compiled` REPLACES the vercel preset's own compiled hook
+  //     (which writes .vercel/output/config.json and .vc-config.json), and
+  //     the deploy then fails with "No Output Directory named 'public'
+  //     found". A module adds its hook via nitro.hooks.hook() additively.
+  modules: [{
+    name: "example-solidstart:ship-native-addon",
+    setup(nitro) {
+      nitro.hooks.hook("compiled", async () => {
+        /* copy .vinxi/build/ssr/*.node → <serverDir>/chunks/ */
+      });
+    },
+  }],
 },
 ```
 
