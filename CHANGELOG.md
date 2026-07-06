@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.2 (2026-07-06)
+
+### vite-plugin-native-rust
+
+- Fix ([#1](https://github.com/kadeangell/vite-plugin-native-rust/issues/1)):
+  the emitted native `.node` addon now survives `@vercel/react-router`
+  `vercelPreset()` builds. When the preset splits the server into per-function
+  bundles (`build/server/nodejs_*/`), a new `writeBundle` pass ensures every
+  chunk that references an addon has the `.node` beside it — copying it back
+  from the compile cache when a post-processing step dropped it, and **failing
+  the build loudly** (naming the chunk and the missing file) when it genuinely
+  can't be placed, instead of the previous silent zero-exit that shipped a
+  server crashing on cold start.
+- Build-mode loader is now **lazy**: function exports load the addon on first
+  call via a memoized wrapper (async return values preserved), so a missing
+  binary is a catchable per-call error with an actionable message (missing
+  path + troubleshooting link) rather than an uncatchable module-init crash of
+  the whole serverless function. Non-function exports stay eager but load
+  through the same guarded loader. When every export is a function (the common
+  napi case), no addon `require` runs at module top level.
+- New integration fixture `react-router-v7-vercel-preset` (RR v7 on Vite 8 with
+  `vercelPreset()`) reproduces the issue's per-function bundle layout and
+  guards the fix end-to-end.
+
 ## 0.1.1 (2026-07-06)
 
 ### vite-plugin-native-rust

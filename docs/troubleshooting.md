@@ -147,6 +147,36 @@ Rust. See [typescript.md](typescript.md).
 wrapper. (On Vercel this is moot — the builder generates its own server shim and
 you never invoke `react-router-serve`.)
 
+## "the native addon was not found next to the server bundle"
+
+**Symptom:** a route throws at request time with
+`[vite-plugin-native-rust] the native addon was not found next to the server
+bundle (expected "…/native-<hash>.node")`.
+
+**Cause:** the emitted `.node` asset is missing from the built output next to the
+chunk that requires it. This can happen when a post-build packaging step
+repackages the server output and carries the chunk code without the sibling
+asset — most notably some `@vercel/react-router` `vercelPreset()` builds that
+split the server into per-function bundles under `build/server/nodejs_*/`
+(issue #1).
+
+**Status / fix:** as of 0.1.2 the plugin guards against this two ways. A
+`writeBundle` pass scans the written output and, for every chunk that references
+an emitted addon, copies the `.node` back from the compile cache if it isn't
+already a sibling — and **fails the build loudly** (naming the chunk and the
+missing file) if it can't, instead of shipping a server that crashes on cold
+start. And the generated loader is **lazy**: function exports load the addon on
+first call, so a genuinely missing binary surfaces as a catchable per-call error
+(this message) rather than an uncatchable module-init crash of the whole
+function.
+
+If you still hit this at runtime: confirm the `.node` exists next to the
+referencing `build/server/**/index.js`, delete `node_modules/.cache/vite-rust`
+and rebuild to repopulate the cache, and make sure the crate compiled on the
+deploy target (see [deployment-vercel.md](deployment-vercel.md)). If the file is
+present and still fails to load, it's a platform/ABI mismatch — rebuild on the
+target OS/arch.
+
 ## Windows
 
 **Symptom:** anything on Windows.
