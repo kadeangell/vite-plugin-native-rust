@@ -7,8 +7,10 @@ dist/
 dist-leak/
 .react-router/
 
-# Generated napi type declarations mirrored next to .rs imports
-*.d.rs.ts
+# Generated napi type declarations churn inside test fixtures; everywhere else
+# (examples, apps) they are committed so CI typechecks without a Rust toolchain
+# (see docs/typescript.md).
+packages/vite-plugin-native-rust/test-integration/**/*.d.rs.ts
 
 # Vercel
 .vercel/
