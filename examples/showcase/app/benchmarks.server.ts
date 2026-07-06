@@ -17,7 +17,16 @@ export interface BenchSuite {
   run: () => Promise<BenchResult[]>; // one row per implementation being compared
 }
 
-// Demo agents append their suite here, e.g.
-//   import { searchBenchSuite } from "./routes/search.server";
-//   export const BENCHMARK_SUITES: BenchSuite[] = [searchBenchSuite];
-export const BENCHMARK_SUITES: readonly BenchSuite[] = [];
+// Each demo owns exactly one slot file under app/benches/ (conflict-free
+// parallel authoring); a slot exporting null renders nothing.
+import { suite as search } from "./benches/search.server";
+import { suite as images } from "./benches/images.server";
+import { suite as transform } from "./benches/transform.server";
+import { suite as hashing } from "./benches/hashing.server";
+
+export const BENCHMARK_SUITES: readonly BenchSuite[] = [
+  search,
+  images,
+  transform,
+  hashing,
+].filter((s): s is BenchSuite => s !== null);
