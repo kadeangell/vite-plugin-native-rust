@@ -1,0 +1,25 @@
+{
+  "name": "example-nuxt",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "node .output/server/index.mjs",
+    "typecheck": "nuxt typecheck"
+  },
+  "dependencies": {
+    "nuxt": "^4.4.8",
+    "vite-plugin-native-rust": "*",
+    "vue": "^3.5.35"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3.7.2",
+    "rollup": "^4.52.0",
+    "typescript": "^5.9.3",
+    "vue-tsc": "^3.2.2"
+  }
+}
