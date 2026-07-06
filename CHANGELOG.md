@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.1 (2026-07-06)
+
+### vite-plugin-native-rust
+
+- Docs only: the packaged README now states that Windows support is not
+  planned (0.1.0 shipped the older "not yet supported" wording). No code
+  changes.
+
 ## 0.1.0 (2026-07-03)
 
 Initial public release. Experimental — the API may change before 0.2.
