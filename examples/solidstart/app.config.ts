@@ -53,28 +53,40 @@ export default defineConfig({
     // .vercel/output. The loader (with real `import.meta.url`, above)
     // resolves `../<name>.node` from chunks/nitro/ → chunks/<name>.node, so
     // copy it there once Nitro finishes.
-    hooks: {
-      compiled: async (nitro: {
-        options: { output: { serverDir: string } };
-      }) => {
-        const ssrOut = join(process.cwd(), ".vinxi/build/ssr");
-        const chunksDir = join(nitro.options.output.serverDir, "chunks");
-        const addons = (await readdir(ssrOut)).filter((f) =>
-          f.endsWith(".node"),
-        );
-        if (addons.length === 0) {
-          throw new Error(
-            "[example-solidstart] no compiled .node addon found in .vinxi/build/ssr — did the rust plugin run in the ssr pass?",
-          );
-        }
-        await mkdir(chunksDir, { recursive: true });
-        for (const addon of addons) {
-          await copyFile(join(ssrOut, addon), join(chunksDir, addon));
-          console.log(
-            `[example-solidstart] copied ${addon} into the Vercel function (chunks/)`,
-          );
-        }
+    // Registered as a Nitro *module* (additive) rather than `hooks:` — a
+    // user-level `hooks.compiled` would *replace* the vercel preset's own
+    // `compiled` hook, which writes .vc-config.json/config.json, and silently
+    // break the deploy.
+    modules: [
+      {
+        name: "example-solidstart:ship-native-addon",
+        setup(nitro: {
+          hooks: {
+            hook: (name: string, fn: () => Promise<void>) => void;
+          };
+          options: { output: { serverDir: string } };
+        }) {
+          nitro.hooks.hook("compiled", async () => {
+            const ssrOut = join(process.cwd(), ".vinxi/build/ssr");
+            const chunksDir = join(nitro.options.output.serverDir, "chunks");
+            const addons = (await readdir(ssrOut)).filter((f) =>
+              f.endsWith(".node"),
+            );
+            if (addons.length === 0) {
+              throw new Error(
+                "[example-solidstart] no compiled .node addon found in .vinxi/build/ssr — did the rust plugin run in the ssr pass?",
+              );
+            }
+            await mkdir(chunksDir, { recursive: true });
+            for (const addon of addons) {
+              await copyFile(join(ssrOut, addon), join(chunksDir, addon));
+              console.log(
+                `[example-solidstart] copied ${addon} into the Vercel function (chunks/)`,
+              );
+            }
+          });
+        },
       },
-    },
+    ],
   },
 });
