@@ -1,5 +1,19 @@
 # Publish plan: `vite-plugin-native-rust` v0.1.0
 
+> **Status: SHIPPED (2026-07-06).** Both packages live on npm at 0.1.0
+> (`vite-plugin-native-rust`, `create-native-rust`), verified by a
+> registry-sourced scaffold + import smoke test. Repo public at
+> github.com/kadeangell/vite-plugin-native-rust with CI fully green
+> (lint, unit 22/24 matrix, node-20 smoke, integration on ubuntu+macos),
+> `v0.1.0` tagged + GitHub release. Publishes were manual (npm's
+> interactive auth); future releases: add an `NPM_TOKEN` automation-token
+> secret and push a tag — release.yml then publishes with provenance.
+> Windows support: not planned (documented). Notable finds along the way:
+> the integration suite caught a real bug pre-release (`ssrEmitAssets`
+> defaulting off dropped the addon from bare `vite build --ssr`), and the
+> RR v8 / Vite 8 Environment API verdict is: the `options.ssr` contract
+> holds unchanged.
+
 ## Goal
 
 Turn the working scratchpad into a legitimate, publishable npm package:
