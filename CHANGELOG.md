@@ -13,11 +13,14 @@
 
 ### examples
 
-- Four new examples, all deployed + validated on Vercel: `sveltekit` and
-  `astro` (plugin works out of the box, first Vite 8/rolldown validation),
-  `nextjs` and `remix-v3` (no Vite in those frameworks — same napi-rs crate
-  consumed directly, with the required file-tracing/bundler workarounds
-  documented).
+- Eight new examples, all deployed + validated on Vercel: `sveltekit`,
+  `astro`, `tanstack-start`, `qwik` (plugin works out of the box; first
+  Vite 8/rolldown validation; Qwik deploys via Node middleware since its
+  official Vercel adapter is edge-only), `nuxt` and `solidstart` (working,
+  each with a documented Nitro recipe — see issue #3 for the planned
+  first-class helper), `nextjs` and `remix-v3` (no Vite in those
+  frameworks — same napi-rs crate consumed directly, with the required
+  file-tracing/bundler workarounds documented).
 
 ## 0.2.0 (2026-07-06)
 

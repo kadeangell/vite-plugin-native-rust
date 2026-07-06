@@ -66,7 +66,7 @@ correction told straight.
 | | |
 | --- | --- |
 | Vite | >= 6 (peer dependency; Vite 8 / rolldown validated) |
-| Frameworks | React Router v7 / v8, vanilla Vite SSR, SvelteKit, Astro |
+| Frameworks | React Router v7 / v8, vanilla Vite SSR, SvelteKit, Astro, TanStack Start, Qwik City — out of the box. Nuxt + SolidStart — working, with a documented Nitro recipe (see their examples). |
 | OS | macOS, Linux |
 | Node | >= 20 |
 | Build-time | Rust toolchain (`cargo` on `PATH`) + `@napi-rs/cli` >= 3 |
@@ -168,10 +168,14 @@ instead of serving a stale binary.
 - **[`examples/react-router`](examples/react-router)** — React Router v7 app with the Rust A/B routes and Vercel wiring.
 - **[`examples/sveltekit`](examples/sveltekit)** — SvelteKit + adapter-vercel; plugin works out of the box (Vite 8 / rolldown).
 - **[`examples/astro`](examples/astro)** — Astro SSR + @astrojs/vercel; plugin works out of the box.
+- **[`examples/tanstack-start`](examples/tanstack-start)** — TanStack Start; works with zero config (the plugin's addon-recovery pass handles Nitro's re-bundle).
+- **[`examples/qwik`](examples/qwik)** — Qwik City; plugin works out of the box, deployed via the Node middleware (Qwik's official Vercel adapter is edge-only, where native addons can't run).
+- **[`examples/nuxt`](examples/nuxt)** — Nuxt, Rust in **both** pipelines: Vite app layer out of the box, Nitro `server/` routes via a small documented adapter.
+- **[`examples/solidstart`](examples/solidstart)** — SolidStart (v1/vinxi); works with a three-part Nitro recipe in `app.config.ts`, all documented.
 - **[`examples/nextjs`](examples/nextjs)** — Next.js has no Vite: the same crate consumed directly, with the Turbopack + file-tracing workarounds documented.
 - **[`examples/remix-v3`](examples/remix-v3)** — Remix v3 (beta) has no Vite or build step: direct crate consumption + the serverless bundling recipe.
 
-All five examples deploy to Vercel and are validated against live production URLs.
+All nine examples deploy to Vercel and are validated against live production URLs.
 
 ## Contributing
 
