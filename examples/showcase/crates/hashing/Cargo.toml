@@ -1,0 +1,30 @@
+[package]
+name = "hashing"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+argon2 = "0.5"
+# argon2's re-exported rand_core needs the "getrandom" feature for OsRng
+# (OS-entropy salt generation); enabling it here unifies onto the same crate.
+rand_core = { version = "0.6", features = ["getrandom"] }
+napi = { version = "3", default-features = false, features = ["napi4", "async"] }
+napi-derive = "3"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+strip = "symbols"
+
+# The Vite plugin builds `debug` in dev mode. Unoptimized argon2 is ~10× slower
+# (~1 s/hash instead of the tuned ~100 ms), which would make the dev-server demo
+# numbers meaningless. Optimizing only DEPENDENCIES keeps this crate's own glue
+# code compiling instantly while the argon2/blake2 hot loops run at full speed —
+# the same trick the RustCrypto docs recommend for password hashing in dev.
+[profile.dev.package."*"]
+opt-level = 3
