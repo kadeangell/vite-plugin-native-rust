@@ -8,6 +8,7 @@ export default [
   index("routes/home.tsx"),
   route("search", "routes/search.tsx"),
   route("images", "routes/images.tsx"),
+  route("images/thumb", "routes/images.thumb.ts"),
   route("transform", "routes/transform.tsx"),
   route("hashing", "routes/hashing.tsx"),
   route("benchmarks", "routes/benchmarks.tsx"),
