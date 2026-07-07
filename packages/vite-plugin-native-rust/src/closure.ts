@@ -1,11 +1,8 @@
-import { execFile } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, parse } from "node:path";
-import { promisify } from "node:util";
 
 import { collectCrateInputs } from "./crate.ts";
-
-const execFileAsync = promisify(execFile);
+import { execFileTransientRetry } from "./spawn.ts";
 
 /** The slice of `cargo metadata --format-version 1` output we rely on. */
 export interface CargoMetadata {
@@ -33,8 +30,10 @@ export interface ClosureOptions {
   onWarn?: (message: string) => void;
 }
 
+// Both default runners retry once on transient spawn errors (macOS EBADF
+// flake, issue #6) so a system hiccup doesn't degrade to single-crate hashing.
 const defaultRunMetadata: MetadataRunner = async (crateDir) => {
-  const { stdout } = await execFileAsync(
+  const { stdout } = await execFileTransientRetry(
     "cargo",
     ["metadata", "--format-version", "1", "--manifest-path", join(crateDir, "Cargo.toml")],
     { cwd: crateDir, maxBuffer: 64 * 1024 * 1024 },
@@ -43,7 +42,7 @@ const defaultRunMetadata: MetadataRunner = async (crateDir) => {
 };
 
 const defaultRunGenerateLockfile: LockfileRunner = async (crateDir) => {
-  await execFileAsync(
+  await execFileTransientRetry(
     "cargo",
     ["generate-lockfile", "--manifest-path", join(crateDir, "Cargo.toml")],
     { cwd: crateDir, maxBuffer: 16 * 1024 * 1024 },

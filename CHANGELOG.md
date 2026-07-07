@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1 (2026-07-07)
+
+### vite-plugin-native-rust
+
+- Fix ([#6](https://github.com/kadeangell/vite-plugin-native-rust/issues/6)):
+  transient spawn failures are no longer misreported as a missing toolchain.
+  The cargo preflight only claims "`cargo` was not found on your PATH" on a
+  real ENOENT; other spawn-level errors (e.g. the documented macOS/Node
+  `spawn EBADF` flake) surface their actual code with a "transient — retry"
+  hint. The preflight, `cargo metadata`, and `cargo generate-lockfile` calls
+  all retry once on EBADF/EAGAIN — command exit codes are never retried.
+
 ## 0.3.0 (2026-07-07)
 
 Addresses all three open roadmap issues (#3, #4, #5).

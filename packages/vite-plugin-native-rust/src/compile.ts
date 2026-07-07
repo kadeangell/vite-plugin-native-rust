@@ -1,4 +1,10 @@
 import { execFile } from "node:child_process";
+
+import {
+  execFileTransientRetry,
+  isCommandNotFound,
+  type ExecFn,
+} from "./spawn.ts";
 import {
   copyFileSync,
   existsSync,
@@ -43,14 +49,26 @@ export function resolveNapiBin(): string {
 
 /**
  * Fail fast with an actionable message when the Rust toolchain is missing,
- * rather than letting a cold napi build error out cryptically.
+ * rather than letting a cold napi build error out cryptically. Only ENOENT
+ * means "not installed" — transient spawn failures (macOS EBADF flake,
+ * issue #6) get one retry and are otherwise reported for what they are, not
+ * blamed on a missing toolchain.
  */
-export async function assertCargoAvailable(): Promise<void> {
+export async function assertCargoAvailable(exec?: ExecFn): Promise<void> {
   try {
-    await execFileAsync("cargo", ["--version"]);
-  } catch {
+    await execFileTransientRetry("cargo", ["--version"], undefined, exec);
+  } catch (error: unknown) {
+    if (isCommandNotFound(error)) {
+      throw new Error(
+        "`cargo` was not found on your PATH — install Rust from https://rustup.rs.",
+      );
+    }
+    const code = (error as { code?: unknown })?.code ?? "unknown";
     throw new Error(
-      "`cargo` was not found on your PATH — install Rust from https://rustup.rs.",
+      `cargo preflight failed with a system error (spawn ${String(code)}). ` +
+        "This is usually a transient macOS/Node child-process flake, not a " +
+        "missing toolchain — retry the request or restart the dev server. " +
+        "See https://github.com/kadeangell/vite-plugin-native-rust/issues/6.",
     );
   }
 }
