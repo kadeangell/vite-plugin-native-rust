@@ -1,8 +1,33 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (2026-07-07)
+
+Addresses all three open roadmap issues (#3, #4, #5).
 
 ### vite-plugin-native-rust
+
+- Feature ([#3](https://github.com/kadeangell/vite-plugin-native-rust/issues/3)):
+  new **`vite-plugin-native-rust/nitro`** subpath for Nitro-family frameworks
+  (Nuxt `server/` routes, SolidStart v1/vinxi, raw Nitro): `nitroRustPlugin()`
+  (server-context forcing under raw Rollup + repair of the
+  `import.meta.ROLLUP_FILE_URL_*` tokens Nitro's replace shim mangles +
+  neutralized chunk-sibling recovery), `nitroShipAddons()` (additive Nitro
+  module placing the upstream Vite pass's `.node` on the `compiled` hook —
+  never `hooks.compiled`, which would replace preset hooks), and
+  `nitroPreserveImportMeta()`. Built and verified against **Nitro 2.x**; Nitro
+  v3 is a rewrite — issue #3 stays open to revalidate there. The nuxt and
+  solidstart examples now use the helpers (-146 lines of hand-rolled adapter).
+  Full rationale in [docs/nitro.md](docs/nitro.md).
+- Feature ([#5](https://github.com/kadeangell/vite-plugin-native-rust/issues/5)):
+  **dev-server pre-warm**. At `configureServer` the plugin starts compiling
+  every crate it can discover, so a cold cargo build races your first request
+  instead of blocking inside it (and timing out Nitro-style 60s module-runner
+  fetches, which cache the failure until restart). Discovery: a
+  `prewarm-manifest.json` in `cacheDir` remembers previously compiled crates
+  (zero config), plus a new `prewarm: boolean | string[]` option for explicit
+  anchors / disabling. Requests arriving mid-pre-warm coalesce onto the
+  in-flight compile (`load` and pre-warm share one `ensureCrateCompiled`
+  pipeline); pre-warm failure is a warning, never a dead server.
 
 - Fix ([#4](https://github.com/kadeangell/vite-plugin-native-rust/issues/4)):
   stable cache key for crates that don't have a `Cargo.lock` yet. The plugin

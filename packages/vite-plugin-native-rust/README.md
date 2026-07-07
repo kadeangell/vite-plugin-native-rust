@@ -1,6 +1,6 @@
 # vite-plugin-native-rust
 
-> **Experimental — 0.2.** Still pre-1.0; the API may shift between minor
+> **Experimental — 0.3.** Still pre-1.0; the API may shift between minor
 > releases, with any change called out in the
 > [changelog](https://github.com/kadeangell/vite-plugin-native-rust/blob/main/CHANGELOG.md).
 
@@ -40,9 +40,11 @@ methodology and the honest serverless caveats are in the
 - A Rust toolchain (`cargo` on `PATH`; install from <https://rustup.rs>)
 - macOS or Linux — **Windows support is not planned**
 
-Supported frameworks: React Router v7 / v8, vanilla Vite SSR, SvelteKit, and
-Astro (Vite 8 / rolldown validated). Next.js and Remix v3 don't run Vite — see
-the repo's examples for the plugin-free pattern with the same crate.
+Supported frameworks: React Router v7 / v8, vanilla Vite SSR, SvelteKit, Astro,
+TanStack Start, and Qwik City out of the box (Vite 8 / rolldown validated);
+Nuxt and SolidStart via the `vite-plugin-native-rust/nitro` helpers. Next.js
+and Remix v3 don't run Vite — see the repo's examples for the plugin-free
+pattern with the same crate.
 
 ## Quickstart
 

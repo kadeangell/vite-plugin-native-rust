@@ -1,6 +1,6 @@
 # vite-plugin-native-rust
 
-> **Experimental — 0.2.** Still pre-1.0; the API may shift between minor releases, with any change called out in the [changelog](CHANGELOG.md). See the [supported matrix](#supported).
+> **Experimental — 0.3.** Still pre-1.0; the API may shift between minor releases, with any change called out in the [changelog](CHANGELOG.md). See the [supported matrix](#supported).
 
 Import Rust directly in Vite SSR server code. Write
 
@@ -66,7 +66,7 @@ correction told straight.
 | | |
 | --- | --- |
 | Vite | >= 6 (peer dependency; Vite 8 / rolldown validated) |
-| Frameworks | React Router v7 / v8, vanilla Vite SSR, SvelteKit, Astro, TanStack Start, Qwik City — out of the box. Nuxt + SolidStart — working, with a documented Nitro recipe (see their examples). |
+| Frameworks | React Router v7 / v8, vanilla Vite SSR, SvelteKit, Astro, TanStack Start, Qwik City — out of the box. Nuxt + SolidStart — via the `vite-plugin-native-rust/nitro` helpers (see [docs/nitro.md](docs/nitro.md)). |
 | OS | macOS, Linux |
 | Node | >= 20 |
 | Build-time | Rust toolchain (`cargo` on `PATH`) + `@napi-rs/cli` >= 3 |
@@ -143,6 +143,7 @@ zero-argument behavior.
 | `generateCratePackageJson` | `boolean` | `true` | Write a `package.json` carrying `napi.binaryName` when the crate lacks one. `false` errors instead of mutating your crate. |
 | `emitTypes` | `boolean` | `true` | Mirror napi's generated types to a `.d.rs.ts` beside the imported `.rs`. `false` skips all `.d.rs.ts` writes. |
 | `logLevel` | `'silent' \| 'info'` | `'info'` | `'silent'` suppresses the compile-progress and type-write lines; warnings and errors always show. |
+| `prewarm` | `boolean \| string[]` | `true` | Pre-compile known crates at dev-server startup (remembered via a manifest in `cacheDir`; an array adds explicit anchors; `false` disables). A request arriving mid-pre-warm joins the in-flight compile. |
 
 The cache key folds in the crate's full local dependency closure — path deps,
 workspace members, the workspace `Cargo.toml`, and the lockfile — plus the
@@ -154,6 +155,7 @@ instead of serving a stale binary.
 | Doc | What it covers |
 | --- | --- |
 | [how-it-works.md](docs/how-it-works.md) | The resolve → load → compile → cache → emit pipeline, and why it survives bundling and serverless tracing. |
+| [nitro.md](docs/nitro.md) | The Nitro-family helpers (Nuxt `server/`, SolidStart, raw Nitro): what Nitro breaks and how each accommodation works. |
 | [rust-patterns.md](docs/rust-patterns.md) | Copyable napi patterns from the showcase: async-vs-sync, Buffers + options structs, stateful libs, Result errors, and why debug builds lie about perf. |
 | [typescript.md](docs/typescript.md) | `allowArbitraryExtensions`, the generated `.d.rs.ts`, committing types for CI, and proof the types are real. |
 | [testing.md](docs/testing.md) | The vitest story: `rustPlugin()` in the vitest config, the `rustTestStub` JS-twin helper, and the `test.projects` setup. |

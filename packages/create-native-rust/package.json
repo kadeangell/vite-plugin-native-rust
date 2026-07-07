@@ -1,6 +1,6 @@
 {
   "name": "create-native-rust",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Scaffold a napi-rs crate ready to import from Vite SSR server code with vite-plugin-native-rust.",
   "type": "module",
   "license": "MIT",
