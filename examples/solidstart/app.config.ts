@@ -1,7 +1,9 @@
-import { copyFile, mkdir, readdir } from "node:fs/promises";
-import { join } from "node:path";
 import { defineConfig } from "@solidjs/start/config";
 import { rustPlugin } from "vite-plugin-native-rust";
+import {
+  nitroPreserveImportMeta,
+  nitroShipAddons,
+} from "vite-plugin-native-rust/nitro";
 
 export default defineConfig({
   // vinxi runs THREE Vite passes (routers): "client", "ssr", and
@@ -24,69 +26,28 @@ export default defineConfig({
         runtime: "nodejs24.x",
       },
     },
-    // ── Workaround 1/2: keep `import.meta.url` real in Nitro's bundle. ──
-    // Nitro's rollup pass rewrites every `import.meta.<x>` to
-    // `globalThis._importMeta_.<x>`, whose `url` is the *entry* (index.mjs at
-    // the function root) — that breaks the plugin's emitted
-    // `new URL("../soliddemo-<hash>.node", import.meta.url)` loader, which is
-    // relative to the chunk that contains it. `replace` entries are merged
-    // last, and @rollup/plugin-replace matches longest-key-first, so this
-    // identity mapping wins over Nitro's `import.meta.` rewrite for exactly
-    // `import.meta.url` and leaves everything else stubbed as Nitro intends.
-    replace: {
-      "import.meta.url": "import.meta.url",
-    },
-    // Nitro's esbuild step defaults to target es2019, where `import.meta` is
-    // "not available" — esbuild would stub it to an empty object and break the
-    // loader we just preserved. The function runs on Node 24; es2022 keeps
-    // `import.meta` intact.
-    esbuild: {
-      options: {
-        target: "es2022",
-      },
-    },
-    // ── Workaround 2/2: ship the addon into the function bundle. ────────
-    // vinxi's ssr/server-fns Vite passes emit the compiled `.node` beside
-    // their chunks (.vinxi/build/{ssr,server-fns/_server}/), but Nitro's
-    // rollup pass re-bundles those chunks into chunks/nitro/nitro.mjs and
-    // does not treat the addon as an asset, so it never reaches
-    // .vercel/output. The loader (with real `import.meta.url`, above)
-    // resolves `../<name>.node` from chunks/nitro/ → chunks/<name>.node, so
-    // copy it there once Nitro finishes.
-    // Registered as a Nitro *module* (additive) rather than `hooks:` — a
-    // user-level `hooks.compiled` would *replace* the vercel preset's own
-    // `compiled` hook, which writes .vc-config.json/config.json, and silently
-    // break the deploy.
+    // ── Nitro accommodation 1/2: keep `import.meta.url` real. ──────────────
+    // The rust plugin runs in vinxi's VITE passes, so the chunks Nitro
+    // re-bundles already contain the resolved loader
+    // `new URL("../soliddemo-<hash>.node", import.meta.url)` — chunk-relative.
+    // Nitro's rollup pass would rewrite `import.meta.url` to the entry-URL
+    // stub `globalThis._importMeta_.url` (breaking the relative resolution),
+    // and its esbuild step (target es2019) would stub `import.meta` to `{}`
+    // entirely. This helper fragment exempts exactly `import.meta.url` from
+    // the stub (identity `replace` entry; Nitro merges user entries last and
+    // @rollup/plugin-replace matches longest-key-first) and raises the
+    // esbuild target to es2022. See the plugin's docs/nitro.md.
+    ...nitroPreserveImportMeta(),
+    // ── Nitro accommodation 2/2: ship the addon into the function bundle. ──
+    // Nitro's rollup pass re-bundles vinxi's ssr output into
+    // chunks/nitro/nitro.mjs and does not treat the `.node` addon as an
+    // asset, so it never reaches .vercel/output on its own. This Nitro module
+    // copies it (on the `compiled` hook, registered ADDITIVELY — a user-level
+    // `hooks.compiled` would replace the vercel preset's own hook and break
+    // the deploy) to <serverDir>/chunks/, where the preserved chunk-relative
+    // loader `../<name>.node` resolves from chunks/nitro/nitro.mjs.
     modules: [
-      {
-        name: "example-solidstart:ship-native-addon",
-        setup(nitro: {
-          hooks: {
-            hook: (name: string, fn: () => Promise<void>) => void;
-          };
-          options: { output: { serverDir: string } };
-        }) {
-          nitro.hooks.hook("compiled", async () => {
-            const ssrOut = join(process.cwd(), ".vinxi/build/ssr");
-            const chunksDir = join(nitro.options.output.serverDir, "chunks");
-            const addons = (await readdir(ssrOut)).filter((f) =>
-              f.endsWith(".node"),
-            );
-            if (addons.length === 0) {
-              throw new Error(
-                "[example-solidstart] no compiled .node addon found in .vinxi/build/ssr — did the rust plugin run in the ssr pass?",
-              );
-            }
-            await mkdir(chunksDir, { recursive: true });
-            for (const addon of addons) {
-              await copyFile(join(ssrOut, addon), join(chunksDir, addon));
-              console.log(
-                `[example-solidstart] copied ${addon} into the Vercel function (chunks/)`,
-              );
-            }
-          });
-        },
-      },
+      nitroShipAddons({ from: ".vinxi/build/ssr", to: "chunks", required: true }),
     ],
   },
 });
