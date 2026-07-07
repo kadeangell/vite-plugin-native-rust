@@ -100,34 +100,36 @@ their adapters `@vercel/nft`-trace the Vite output instead of re-bundling it:
    input; the `.node` asset Vite emitted is not an asset to Nitro's rollup,
    so nothing copies it into `.vercel/output`.
 
-Both are fixed at **config level** in `app.config.ts` — no plugin changes, no
-post-build script:
+Both are fixed at **config level** in `app.config.ts`, using the plugin's
+packaged Nitro helpers (`vite-plugin-native-rust/nitro` — the productized
+version of the hand-rolled ~40 lines this example originally carried; see the
+plugin's [docs/nitro.md](../../docs/nitro.md)):
 
 ```ts
+import { nitroPreserveImportMeta, nitroShipAddons } from "vite-plugin-native-rust/nitro";
+
 server: {
-  // 1a. Nitro merges user `replace` entries last and
-  //     @rollup/plugin-replace matches longest-key-first, so this identity
-  //     mapping exempts exactly `import.meta.url` from the stub rewrite.
-  replace: { "import.meta.url": "import.meta.url" },
-  // 1b. es2022 keeps `import.meta` intact through Nitro's esbuild step
-  //     (the function runs on Node 24; es2019 is Nitro's default).
-  esbuild: { options: { target: "es2022" } },
+  // 1.  Keeps `import.meta.url` REAL through Nitro's re-bundle:
+  //     - an identity `replace` entry ("import.meta.url" → itself): Nitro
+  //       merges user entries last and @rollup/plugin-replace matches
+  //       longest-key-first, so exactly `import.meta.url` escapes the
+  //       `globalThis._importMeta_.` stub rewrite;
+  //     - esbuild target es2022 (Nitro's default es2019 would stub
+  //       `import.meta` to `{}`; the function runs on Node 24).
+  ...nitroPreserveImportMeta(),
   // 2.  After Nitro compiles, copy the addon from the ssr pass output into
   //     the function bundle. With a real `import.meta.url` the loader in
   //     chunks/nitro/nitro.mjs resolves `../<name>.node` → chunks/<name>.node.
-  //     Registered as a Nitro *module*, NOT `hooks:` — a user-level
-  //     `hooks.compiled` REPLACES the vercel preset's own compiled hook
-  //     (which writes .vercel/output/config.json and .vc-config.json), and
-  //     the deploy then fails with "No Output Directory named 'public'
+  //     nitroShipAddons is a Nitro *module*, NOT a `hooks:` entry — a
+  //     user-level `hooks.compiled` REPLACES the vercel preset's own compiled
+  //     hook (which writes .vercel/output/config.json and .vc-config.json),
+  //     and the deploy then fails with "No Output Directory named 'public'
   //     found". A module adds its hook via nitro.hooks.hook() additively.
-  modules: [{
-    name: "example-solidstart:ship-native-addon",
-    setup(nitro) {
-      nitro.hooks.hook("compiled", async () => {
-        /* copy .vinxi/build/ssr/*.node → <serverDir>/chunks/ */
-      });
-    },
-  }],
+  //     `required: true` fails the BUILD (not the deploy's cold start) if no
+  //     addon came out of the ssr pass.
+  modules: [
+    nitroShipAddons({ from: ".vinxi/build/ssr", to: "chunks", required: true }),
+  ],
 },
 ```
 
@@ -149,7 +151,7 @@ move the copy destination to match.
   router passes), `server.preset = "vercel"`, the runtime pin
   (`vercel.functions.runtime = "nodejs24.x"` — Nitro otherwise derives it
   from the *local* Node major, which may be a version Vercel rejects), and
-  the two Nitro workarounds above.
+  the two `vite-plugin-native-rust/nitro` helpers above.
 - **`src/lib/rust.ts`** — the single import site for the `.rs` file, with a
   **module-level `"use server"`** directive. That is the load-bearing choice:
   the client pass replaces the whole module with RPC stubs and never follows
@@ -174,11 +176,12 @@ move the copy destination to match.
   runs a cold `cargo` debug build (~20-30 s; watch for the
   `[vite-rust] compiling crate "soliddemo"` line). Later requests hit the
   content-hash cache.
-- **The workarounds poke at Nitro internals.** `replace` and
-  `esbuild.options.target` are public Nitro config, but the *reason* they are
-  needed (the `_importMeta_` rewrite) is an implementation detail that could
-  change across Nitro majors. Re-verify with `npm run preview` after
-  upgrading `vinxi`/`@solidjs/start`.
+- **The helpers poke at Nitro internals.** `nitroPreserveImportMeta()` emits
+  public Nitro config (`replace`, `esbuild.options.target`), but the *reason*
+  it is needed (the `_importMeta_` rewrite) is an implementation detail that
+  could change across Nitro majors — the helpers are built against Nitro 2.x,
+  and Nitro v3 is a rewrite. Re-verify with `npm run preview` after upgrading
+  `vinxi`/`@solidjs/start`.
 - **Keeping `import.meta.url` real is safe here but global.** It applies to
   the whole server bundle, not just the loader chunk. For a pure-ESM Node
   function the real value is *more* correct than Nitro's entry-URL stub, and

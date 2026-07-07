@@ -1,9 +1,5 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
-import { join } from "node:path";
-
 import { rustPlugin } from "vite-plugin-native-rust";
-
-import { rustPluginForNitro } from "./nitro-rust";
+import { nitroRustPlugin, nitroShipAddons } from "vite-plugin-native-rust/nitro";
 
 // Nuxt runs TWO build pipelines, and the Rust plugin must be registered in
 // each one it should serve:
@@ -14,8 +10,12 @@ import { rustPluginForNitro } from "./nitro-rust";
 //    server-only app code (here: `app/plugins/rust.server.ts`) may import Rust.
 //  - `nitro.rollupConfig.plugins` covers the `server/` directory (API routes,
 //    middleware), which Nitro bundles with its own Rollup pass that never sees
-//    Vite plugins. `rustPluginForNitro()` (./nitro-rust.ts) adapts the same
-//    plugin for that pass.
+//    Vite plugins. `nitroRustPlugin()` (from the plugin's `/nitro` subpath)
+//    adapts the same plugin for that pass: it forces the server context on
+//    `load` (raw Rollup passes no `{ ssr }`), repairs the file-URL tokens that
+//    Nitro's `import.meta` shim mangles, and neutralizes the chunk-sibling
+//    recovery that inverts into dead weight under Nitro's entry-relative
+//    runtime. See the plugin's docs/nitro.md for the full reasoning.
 export default defineNuxtConfig({
   compatibilityDate: "2026-07-01",
 
@@ -25,10 +25,23 @@ export default defineNuxtConfig({
 
   nitro: {
     rollupConfig: {
-      // Must come before Nitro's own plugins so `.rs` specifiers are claimed
-      // before node-resolve treats raw Rust source as JavaScript.
-      plugins: [rustPluginForNitro()],
+      // Must come FIRST (before Nitro's own plugins) so `.rs` specifiers are
+      // claimed before node-resolve treats raw Rust source as JavaScript.
+      plugins: [nitroRustPlugin()],
     },
+    // Guarantee the APP-LAYER (Vite-side) addon travels into `.output`:
+    // `nuxt build` runs the Vite SSR build first — the plugin emits the
+    // compiled `.node` beside `server.mjs` in `.nuxt/dist/server/` — and Nitro
+    // then re-bundles that server entry into `.output/server/chunks/` without
+    // knowing about assets Vite emitted. This Nitro module copies any
+    // app-layer `.node` to the output-server root on the `compiled` hook —
+    // exactly where the surviving entry-relative
+    // `new URL("<name>.node", globalThis._importMeta_.url)` reference
+    // resolves. (In this example the `server/api/rust.ts` route imports the
+    // same crate, so Nitro's own pass already emits an identically named
+    // asset at that spot — the module keeps the app layer correct on its own,
+    // e.g. if the API route is ever removed.)
+    modules: [nitroShipAddons({ from: ".nuxt/dist/server" })],
     typescript: {
       tsConfig: {
         compilerOptions: { allowArbitraryExtensions: true },
@@ -42,45 +55,6 @@ export default defineNuxtConfig({
       functions: { runtime: "nodejs24.x" },
     },
   },
-
-  modules: [
-    /**
-     * Guarantee the APP-LAYER (Vite-side) addon travels into `.output`.
-     *
-     * `nuxt build` runs the Vite SSR build first — the plugin emits the
-     * compiled `.node` beside `server.mjs` in `<buildDir>/dist/server/` — and
-     * Nitro then re-bundles that server entry into `.output/server/chunks/`.
-     * Nitro's Rollup pass knows nothing about assets Vite emitted, so the
-     * addon would be left behind. The runtime reference survives as
-     * `new URL("<name>.node", globalThis._importMeta_.url)`, which Nitro
-     * resolves against the server ENTRY's directory — so one copy of each
-     * addon at the output-server root makes the app-layer import work.
-     *
-     * (In this example the `server/api/rust.ts` route imports the same crate,
-     * so Nitro's own pass already emits an identically-named asset at that
-     * exact spot — but this hook keeps the app layer correct on its own, e.g.
-     * if the API route is ever removed.)
-     */
-    function rustAddonGuarantee(_options: unknown, nuxt: any) {
-      nuxt.hook("nitro:init", (nitro: any) => {
-        nitro.hooks.hook("compiled", () => {
-          const viteServerDir = join(nuxt.options.buildDir, "dist", "server");
-          const outServerDir: string = nitro.options.output.serverDir;
-          if (!existsSync(viteServerDir) || !existsSync(outServerDir)) return;
-          for (const file of readdirSync(viteServerDir)) {
-            if (!file.endsWith(".node")) continue;
-            const dest = join(outServerDir, file);
-            if (existsSync(dest)) continue;
-            mkdirSync(outServerDir, { recursive: true });
-            copyFileSync(join(viteServerDir, file), dest);
-            console.log(
-              `[example-nuxt] copied app-layer addon ${file} → .output/server/`,
-            );
-          }
-        });
-      });
-    },
-  ],
 
   // Nuxt generates project-reference tsconfigs under `.nuxt/`;
   // `allowArbitraryExtensions` lets TypeScript resolve the plugin-generated

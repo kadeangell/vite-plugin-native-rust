@@ -29,9 +29,20 @@ should serve, and the two registrations are different:
 
 ```ts
 // nuxt.config.ts
+import { rustPlugin } from "vite-plugin-native-rust";
+import { nitroRustPlugin, nitroShipAddons } from "vite-plugin-native-rust/nitro";
+
 vite: { plugins: [rustPlugin()] },                          // app layer
-nitro: { rollupConfig: { plugins: [rustPluginForNitro()] } } // server/ dir
+nitro: {
+  rollupConfig: { plugins: [nitroRustPlugin()] },           // server/ dir
+  modules: [nitroShipAddons({ from: ".nuxt/dist/server" })], // app-layer addon → .output
+}
 ```
+
+Both Nitro-side pieces come from the plugin's **`/nitro` subpath** — the
+packaged version of the hand-rolled adapter this example originally carried
+(see the plugin's [docs/nitro.md](../../docs/nitro.md) for every
+accommodation and why it exists).
 
 ### Vite layer (app code) — works, with one placement hook
 
@@ -50,16 +61,17 @@ a page's `<script setup>`) fails the client build with the plugin's readable
 One wrinkle: `nuxt build` runs the Vite SSR build first, then **Nitro
 re-bundles Vite's server output** into `.output/server/chunks/`. Nitro's
 Rollup pass knows nothing about the `.node` asset Vite emitted, so it would be
-left behind. The inline `rustAddonGuarantee` module in `nuxt.config.ts` copies
-any app-layer `.node` from the Vite server output into `.output/server/` on
-Nitro's `compiled` hook — that's the whole fix, because Nitro's runtime
-resolves the surviving `new URL("<name>.node", globalThis._importMeta_.url)`
-reference against the server *entry*, i.e. the output root.
+left behind. The `nitroShipAddons({ from: ".nuxt/dist/server" })` Nitro module
+copies any app-layer `.node` from the Vite server output into
+`.output/server/` on Nitro's `compiled` hook — that's the whole fix, because
+Nitro's runtime resolves the surviving
+`new URL("<name>.node", globalThis._importMeta_.url)` reference against the
+server *entry*, i.e. the output root.
 
-### Nitro layer (server/ dir) — works, via a small adapter
+### Nitro layer (server/ dir) — works, via `nitroRustPlugin()`
 
 `rustPlugin()` is hook-compatible with plain Rollup, but two Vite/Nitro-isms
-bite; `nitro-rust.ts` adapts both (~30 lines):
+bite; `nitroRustPlugin()` (from `vite-plugin-native-rust/nitro`) adapts both:
 
 1. **Raw Rollup passes no `{ ssr }` to `load`**, so the plugin's server-only
    gate would reject every import as "client-side". Nitro's pass is
@@ -74,7 +86,7 @@ bite; `nitro-rust.ts` adapts both (~30 lines):
    `new URL("<asset>", globalThis._importMeta_.url)`, which resolves
    entry-relative at runtime — matching where Rollup writes the emitted asset.
 
-The adapter must be **first** in `nitro.rollupConfig.plugins` (Nitro merges
+The helper must be **first** in `nitro.rollupConfig.plugins` (Nitro merges
 user plugins ahead of its own) so it claims `.rs` specifiers before
 node-resolve tries to parse Rust source as JavaScript. `enforce: "pre"` is a
 Vite concept and does nothing under raw Rollup.
@@ -164,12 +176,12 @@ curl -s https://vpnr-example-nuxt.vercel.app/api/rust
   the lockfile present (it's committed here), a cold build compiles exactly
   once and both pipelines share the cached binary; warm builds skip cargo
   entirely.
-- **The adapter disables the plugin's post-write safety net** (`writeBundle`)
-  inside the Nitro pass: the net assumes chunk-sibling addon resolution, but
-  Nitro resolves entry-relative, so its recovered copies are never read — they
-  only added spurious warnings and ~500 kB of dead weight per referencing
-  chunk directory *inside the deployed function*. See `nitro-rust.ts` for the
-  full reasoning.
+- **`nitroRustPlugin()` disables the plugin's post-write safety net**
+  (`writeBundle`) inside the Nitro pass: the net assumes chunk-sibling addon
+  resolution, but Nitro resolves entry-relative, so its recovered copies are
+  never read — they only added spurious warnings and ~500 kB of dead weight
+  per referencing chunk directory *inside the deployed function*. See the
+  plugin's [docs/nitro.md](../../docs/nitro.md) for the full reasoning.
 - **Don't call Rust from prerendered pages.** This example keeps every route
   on-demand (Nuxt's default). A prerendered/`routeRules` static page would run
   the Rust at build time and bake the values in — it would "work" but
