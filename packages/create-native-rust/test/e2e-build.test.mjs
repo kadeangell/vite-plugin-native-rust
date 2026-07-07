@@ -42,7 +42,15 @@ test("scaffolded crate builds with napi and exposes its sample exports", { timeo
   const base = await mkdtemp(join(tmpdir(), "create-native-rust-e2e-"));
   try {
     const target = join(base, "demo");
-    const { name } = await scaffold({ dir: target, name: "demo" });
+    const { name, lockfile } = await scaffold({ dir: target, name: "demo" });
+
+    // Issue #4: the crate must ship with a lockfile from birth, BEFORE the
+    // first compile, so the plugin's cache key never shifts mid-session.
+    assert.equal(lockfile.status, "generated", JSON.stringify(lockfile));
+    assert.ok(
+      await exists(join(target, "Cargo.lock")),
+      "Cargo.lock exists before the first build",
+    );
 
     // Real napi build (release, so we exercise the shipped profile).
     await execFileAsync("node", [napiCliPath(), "build", "--release"], {

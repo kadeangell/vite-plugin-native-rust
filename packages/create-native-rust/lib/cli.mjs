@@ -50,10 +50,37 @@ export function parseArgs(argv) {
 }
 
 /**
- * Run the CLI. Returns an exit code; writes to the provided streams instead of
- * touching process directly, so tests can drive it.
+ * Human-readable note for a scaffold whose lockfile step did not generate a
+ * `Cargo.lock`. Returns null when there is nothing to say (it was generated).
+ * Exported for tests.
  */
-export async function run(argv, { cwd = process.cwd(), out = process.stdout, err = process.stderr } = {}) {
+export function lockfileNote(lockfile, displayDir) {
+  if (!lockfile || lockfile.status === "generated") return null;
+  const remedy =
+    `run \`cargo generate-lockfile\` in ${displayDir}/ and commit the ` +
+    "Cargo.lock — without it, the first build changes the plugin's cache " +
+    "key and multi-step builds compile the crate twice.";
+  if (lockfile.status === "skipped-no-cargo") {
+    return `note: cargo not found — skipped generating Cargo.lock. Once Rust is installed, ${remedy}`;
+  }
+  const detail = lockfile.detail ? ` (${lockfile.detail})` : "";
+  return `note: \`cargo generate-lockfile\` failed${detail} — the scaffold is still complete. Please ${remedy}`;
+}
+
+/**
+ * Run the CLI. Returns an exit code; writes to the provided streams instead of
+ * touching process directly, so tests can drive it. `generateLockfile` is an
+ * injectable pass-through to `scaffold` for tests.
+ */
+export async function run(
+  argv,
+  {
+    cwd = process.cwd(),
+    out = process.stdout,
+    err = process.stderr,
+    generateLockfile,
+  } = {},
+) {
   let opts;
   try {
     opts = parseArgs(argv);
@@ -73,7 +100,14 @@ export async function run(argv, { cwd = process.cwd(), out = process.stdout, err
   }
 
   try {
-    const result = await scaffold({ dir: opts.dir, name: opts.name, cwd });
+    const result = await scaffold({
+      dir: opts.dir,
+      name: opts.name,
+      cwd,
+      ...(generateLockfile ? { generateLockfile } : {}),
+    });
+    const note = lockfileNote(result.lockfile, opts.dir.replace(/\/+$/, ""));
+    if (note) out.write(`${note}\n\n`);
     out.write(`${nextSteps({ displayDir: opts.dir, name: result.name })}\n`);
     return 0;
   } catch (e) {

@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync, readdirSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, parse } from "node:path";
 import { promisify } from "node:util";
 
 import { collectCrateInputs } from "./crate.ts";
@@ -21,9 +21,14 @@ export interface CargoMetadata {
 /** Runs `cargo metadata` for the crate at `crateDir`. Injectable for tests. */
 export type MetadataRunner = (crateDir: string) => Promise<CargoMetadata>;
 
+/** Runs `cargo generate-lockfile` for the crate at `crateDir`. Injectable for tests. */
+export type LockfileRunner = (crateDir: string) => Promise<void>;
+
 export interface ClosureOptions {
   /** Override the metadata runner (tests inject a stub / spy). */
   runMetadata?: MetadataRunner;
+  /** Override the lockfile generator (tests inject a stub / spy). */
+  runGenerateLockfile?: LockfileRunner;
   /** Surface a non-fatal warning (e.g. the metadata fallback). */
   onWarn?: (message: string) => void;
 }
@@ -35,6 +40,14 @@ const defaultRunMetadata: MetadataRunner = async (crateDir) => {
     { cwd: crateDir, maxBuffer: 64 * 1024 * 1024 },
   );
   return JSON.parse(stdout) as CargoMetadata;
+};
+
+const defaultRunGenerateLockfile: LockfileRunner = async (crateDir) => {
+  await execFileAsync(
+    "cargo",
+    ["generate-lockfile", "--manifest-path", join(crateDir, "Cargo.toml")],
+    { cwd: crateDir, maxBuffer: 16 * 1024 * 1024 },
+  );
 };
 
 /**
@@ -62,6 +75,77 @@ interface CacheEntry {
 // dependency-graph change (which always edits a Cargo.toml) forces a re-run
 // while source-only edits reuse it (sharp edge #4: metadata costs 100-300ms).
 const layoutCache = new Map<string, CacheEntry>();
+
+// Crate dirs for which `cargo generate-lockfile` already ran (or failed) this
+// session, so a missing/ungeneratable lockfile costs one subprocess and one
+// warning — not one per `load()` call.
+const lockfileGenerationAttempted = new Set<string>();
+
+/**
+ * Walk up from `crateDir` looking for a `Cargo.lock`. Mirrors cargo's own
+ * workspace-root discovery: a workspace member's lockfile lives at the
+ * workspace root, which is always at or above the crate directory.
+ */
+function findExistingLockfile(crateDir: string): string | null {
+  let dir = crateDir;
+  const { root } = parse(dir);
+  while (true) {
+    const candidate = join(dir, "Cargo.lock");
+    if (existsSync(candidate)) return candidate;
+    if (dir === root) return null;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * Cache-key stability for lockfile-less crates (issue #4): make sure a
+ * `Cargo.lock` exists BEFORE the first hash, so the key is identical across
+ * every pipeline/build step of the session and across future sessions.
+ *
+ * Why explicit generation, given that `cargo metadata` (which runs right
+ * after) also writes `Cargo.lock` as a side effect of dependency resolution?
+ * Two reasons, both verified empirically:
+ *
+ * 1. **The fallback path had no lockfile at all.** When `cargo metadata`
+ *    fails, `collectClosureInputs` falls back to single-crate hashing — which
+ *    generated nothing. The first compile then created the lockfile, changing
+ *    the dependency-closure hash, and the next pipeline recompiled an
+ *    identical crate (~24s wasted; found by the Nuxt example's multi-pipeline
+ *    build). `cargo generate-lockfile` is metadata-only (no compile) and
+ *    cheap, and its output lands where the fallback's `collectCrateInputs`
+ *    picks it up.
+ * 2. **Determinism should not hinge on a side effect.** Relying on
+ *    `cargo metadata`'s implicit write couples key stability to flags and
+ *    environment (`--frozen`/`--locked`/offline modes suppress it). Running
+ *    `generate-lockfile` first makes the ordering explicit: lockfile exists →
+ *    metadata resolves against it → hash includes it.
+ *
+ * Graceful fallback: if generation fails (no network on a cold registry, odd
+ * toolchain), warn once per crate and proceed with the old behavior — a
+ * missing lockfile must never hard-fail dev.
+ */
+async function ensureLockfile(
+  crateDir: string,
+  runGenerateLockfile: LockfileRunner,
+  onWarn?: (message: string) => void,
+): Promise<void> {
+  if (findExistingLockfile(crateDir) !== null) return;
+  if (lockfileGenerationAttempted.has(crateDir)) return;
+  lockfileGenerationAttempted.add(crateDir);
+  try {
+    await runGenerateLockfile(crateDir);
+  } catch (err) {
+    onWarn?.(
+      `[vite-plugin-native-rust] crate "${crateDir}" has no Cargo.lock and ` +
+        `\`cargo generate-lockfile\` failed — the first compile will create ` +
+        `one, which changes the cache key and forces one extra recompile in ` +
+        `later build steps. Generate and commit a Cargo.lock to avoid this: ` +
+        `${(err as Error).message}`,
+    );
+  }
+}
 
 function mtimeSignature(paths: string[]): string {
   return paths
@@ -160,6 +244,11 @@ async function resolveLayout(
  * `addWatchFile` set, so a change in a sibling path-dep or the lockfile
  * recompiles instead of silently serving a stale binary.
  *
+ * A missing lockfile is generated first (`cargo generate-lockfile`, see
+ * `ensureLockfile`) so it exists — and is part of the returned input set,
+ * hence hashed and watched — from the very first call, keeping the cache key
+ * stable across pipelines instead of shifting after the first compile.
+ *
  * Falls back to single-crate collection (with a warning) if `cargo metadata`
  * fails — a metadata hiccup must not hard-fail dev.
  */
@@ -168,6 +257,9 @@ export async function collectClosureInputs(
   options: ClosureOptions = {},
 ): Promise<string[]> {
   const runMetadata = options.runMetadata ?? defaultRunMetadata;
+  const runGenerateLockfile =
+    options.runGenerateLockfile ?? defaultRunGenerateLockfile;
+  await ensureLockfile(crateDir, runGenerateLockfile, options.onWarn);
   try {
     const layout = await resolveLayout(crateDir, runMetadata);
     return layoutToInputs(layout);
@@ -181,7 +273,11 @@ export async function collectClosureInputs(
   }
 }
 
-/** Test-only: drop the layout cache so a fresh metadata run can be observed. */
+/**
+ * Test-only: drop the layout cache and the lockfile-generation memo so a
+ * fresh metadata run / generation attempt can be observed.
+ */
 export function resetClosureCacheForTests(): void {
   layoutCache.clear();
+  lockfileGenerationAttempted.clear();
 }
