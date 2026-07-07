@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### vite-plugin-native-rust
+
+- Fix ([#4](https://github.com/kadeangell/vite-plugin-native-rust/issues/4)):
+  stable cache key for crates that don't have a `Cargo.lock` yet. The plugin
+  now runs `cargo generate-lockfile` (metadata-only, no compile) before the
+  first hash when no lockfile exists at or above the crate dir, so the lockfile
+  is part of the key — and of the watch set — from the very first build instead
+  of appearing mid-session after the first compile and shifting the key.
+  Previously a multi-pipeline build (e.g. Nuxt's Vite + Nitro passes on a cold
+  Vercel builder) recompiled an identical crate (~24s wasted). Notably, the
+  `cargo metadata` closure resolution already wrote the lockfile as a side
+  effect on its success path; the explicit generation makes the ordering
+  deterministic and — crucially — also covers the metadata-failure fallback
+  (single-crate hashing), which never created one. If `generate-lockfile`
+  fails, the plugin warns once per crate and proceeds with the old behavior.
+
+### create-native-rust
+
+- Scaffolded crates now ship a `Cargo.lock` from birth: the CLI runs
+  `cargo generate-lockfile` at scaffold time when cargo is available, and
+  prints a note (never fails the scaffold) when it isn't. The next-steps
+  output now also reminds you to commit the lockfile.
+
 ## 0.2.1 (2026-07-07)
 
 ### vite-plugin-native-rust

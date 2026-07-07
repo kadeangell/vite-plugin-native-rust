@@ -25,6 +25,12 @@ This generates, in `./native/`:
   doc-commented so the generated types carry the docs into your editor.
 - `package.json` — carries the `napi.binaryName` that napi v3 requires.
 - `.gitignore` — ignores `target/` and `*.node`.
+- `Cargo.lock` — generated at scaffold time via `cargo generate-lockfile`
+  (when cargo is on your PATH; skipped with a printed note otherwise).
+  **Commit it**: the lockfile is part of the plugin's compile-cache key, so a
+  crate born without one changes key after its first compile and costs cold
+  multi-step builds (e.g. Nuxt's Vite + Nitro pipelines) an extra identical
+  ~30s compile.
 
 After scaffolding, the CLI prints the exact vite.config, tsconfig, and import
 wiring to finish hooking the crate into your app — the same steps as the

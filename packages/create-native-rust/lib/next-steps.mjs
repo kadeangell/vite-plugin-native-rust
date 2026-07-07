@@ -46,5 +46,9 @@ Next steps:
   Note: the first dev-server request that touches the crate triggers a cargo
   build (~30s cold, cached after that), so the initial response will pause while
   Rust compiles. Subsequent requests hit the cached native addon.
+
+  Commit the crate's Cargo.lock: it is part of the plugin's compile-cache key,
+  so keeping it in git means cold multi-step builds compile the crate exactly
+  once instead of twice.
 `;
 }

@@ -1,5 +1,6 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { tryGenerateLockfile } from "./lockfile.mjs";
 import { crateFiles } from "./templates.mjs";
 import { deriveNameFromDir, validateName } from "./validate.mjs";
 
@@ -16,13 +17,27 @@ async function isNonEmptyDir(path) {
 /**
  * Scaffold a napi-rs crate into `dir`.
  *
+ * The crate ships with a `Cargo.lock` from birth when cargo is available
+ * (`generateLockfile`, default `tryGenerateLockfile`): the Vite plugin folds
+ * the lockfile into its content-hash cache key, so a crate born without one
+ * would change key after its first compile and cost multi-pipeline builds an
+ * extra identical compile (issue #4). Lockfile generation never fails the
+ * scaffold — the returned `lockfile` status says what happened.
+ *
  * @param {object} params
  * @param {string} params.dir     Target directory (created if missing).
  * @param {string} [params.name]  Binary/crate name; derived from `dir` if omitted.
  * @param {string} [params.cwd]   Base for resolving a relative `dir`.
- * @returns {Promise<{dir: string, name: string, files: string[]}>}
+ * @param {(dir: string) => Promise<{status: string, detail?: string}>} [params.generateLockfile]
+ *   Injectable lockfile step (tests stub it; default runs `cargo generate-lockfile`).
+ * @returns {Promise<{dir: string, name: string, files: string[], lockfile: {status: string, detail?: string}}>}
  */
-export async function scaffold({ dir, name, cwd = process.cwd() }) {
+export async function scaffold({
+  dir,
+  name,
+  cwd = process.cwd(),
+  generateLockfile = tryGenerateLockfile,
+}) {
   if (typeof dir !== "string" || dir.length === 0) {
     throw new Error("target directory is required");
   }
@@ -52,5 +67,14 @@ export async function scaffold({ dir, name, cwd = process.cwd() }) {
     written.push(relPath);
   }
 
-  return { dir: targetDir, name: resolvedName, files: written.sort() };
+  const lockfile = await generateLockfile(targetDir);
+  const allFiles =
+    lockfile.status === "generated" ? [...written, "Cargo.lock"] : written;
+
+  return {
+    dir: targetDir,
+    name: resolvedName,
+    files: [...allFiles].sort(),
+    lockfile,
+  };
 }
