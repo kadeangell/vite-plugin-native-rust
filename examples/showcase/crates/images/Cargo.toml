@@ -1,0 +1,23 @@
+[package]
+name = "images"
+version = "0.0.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+fast_image_resize = { version = "6.0.0", features = ["image"] }
+image = { version = "0.25.10", default-features = false, features = ["jpeg", "png"] }
+napi = { version = "3", default-features = false, features = ["napi4", "async"] }
+napi-derive = "3"
+ravif = "0.13.0"
+rgb = "0.8.53"
+webp = "0.3.1"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+strip = "symbols"
