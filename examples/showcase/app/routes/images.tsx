@@ -1,4 +1,4 @@
-import { Form, Link } from "react-router";
+import { Form, Link, useNavigation } from "react-router";
 
 import { DEMOS } from "../demos";
 import {
@@ -38,12 +38,8 @@ interface ThumbStats {
 const toStats = ({ data: _data, contentType: _ct, ...stats }: ThumbResult): ThumbStats => stats;
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const params = parseThumbParams(new URL(request.url).searchParams);
-
-  // Run the engines back to back (not concurrently) so neither's timings are
-  // polluted by the other competing for cores.
-  const rust = await runRustThumbnail(params);
-  const jimp = await runJimpThumbnail(params);
+  const searchParams = new URL(request.url).searchParams;
+  const params = parseThumbParams(searchParams);
 
   const samples = SAMPLES.map((s) => ({
     id: s.id,
@@ -52,6 +48,18 @@ export async function loader({ request }: Route.LoaderArgs) {
     license: s.license,
     inputBytes: s.jpeg.length,
   }));
+
+  // Only encode when the form was actually submitted (?sample= present).
+  // Encoding both engines on a bare navigation made clicking the /images link
+  // hang for seconds with no feedback (user report).
+  if (!searchParams.has("sample")) {
+    return { params, samples, rust: null, jimp: null };
+  }
+
+  // Run the engines back to back (not concurrently) so neither's timings are
+  // polluted by the other competing for cores.
+  const rust = await runRustThumbnail(params);
+  const jimp = await runJimpThumbnail(params);
 
   return { params, samples, rust: toStats(rust), jimp: toStats(jimp) };
 }
@@ -155,6 +163,7 @@ const fieldStyle: React.CSSProperties = { display: "grid", gap: "0.25rem" };
 export default function Images({ loaderData }: Route.ComponentProps) {
   const { params, samples, rust, jimp } = loaderData;
   const activeSample = samples.find((s) => s.id === params.sampleId)!;
+  const encoding = useNavigation().state !== "idle";
 
   return (
     <main
@@ -232,7 +241,7 @@ export default function Images({ loaderData }: Route.ComponentProps) {
             ))}
           </select>
         </label>
-        <button type="submit">Encode</button>
+        <button type="submit">{encoding ? "Encoding…" : "Encode"}</button>
       </Form>
 
       <p style={{ fontSize: "0.9rem", color: "#555" }}>
@@ -240,20 +249,28 @@ export default function Images({ loaderData }: Route.ComponentProps) {
         {kb(activeSample.inputBytes)} JPEG, {activeSample.license.toLowerCase()}).
       </p>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
-        <ResultCard
-          heading="Rust — crates/images"
-          sub={`image + fast_image_resize + ${params.format === "avif" ? "ravif" : "webp"} → ${params.format.toUpperCase()}`}
-          src={thumbSrc(params, "rust")}
-          stats={rust}
-        />
-        <ResultCard
-          heading="Pure JS — jimp"
-          sub="jimp → JPEG (no WebP/AVIF encoder exists in pure JS)"
-          src={thumbSrc(params, "jimp")}
-          stats={jimp}
-        />
-      </div>
+      {rust && jimp ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "1rem" }}>
+          <ResultCard
+            heading="Rust — crates/images"
+            sub={`image + fast_image_resize + ${params.format === "avif" ? "ravif" : "webp"} → ${params.format.toUpperCase()}`}
+            src={thumbSrc(params, "rust")}
+            stats={rust}
+          />
+          <ResultCard
+            heading="Pure JS — jimp"
+            sub="jimp → JPEG (no WebP/AVIF encoder exists in pure JS)"
+            src={thumbSrc(params, "jimp")}
+            stats={jimp}
+          />
+        </div>
+      ) : (
+        <p style={{ color: "#555", padding: "1.5rem 0" }}>
+          Pick a sample and hit <strong>Encode</strong> — both engines run live
+          on this server (a couple of seconds for AVIF), so nothing encodes
+          until you ask.
+        </p>
+      )}
 
       <section style={{ marginTop: "2rem", fontSize: "0.9rem", color: "#555" }}>
         <h2 style={{ fontSize: "1.1rem", color: "#1a1a1a" }}>Fair-comparison notes</h2>

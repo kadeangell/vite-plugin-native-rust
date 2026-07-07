@@ -11,7 +11,9 @@ export function meta() {
   return [{ title: `${demo.title} — showcase` }];
 }
 
-const MAX_CUSTOM_HTML_BYTES = 256 * 1024;
+// Real marketing emails commonly run 300KB+; 2MB leaves headroom while still
+// bounding request size.
+const MAX_CUSTOM_HTML_BYTES = 2 * 1024 * 1024;
 const DEFAULT_UTM_SOURCE = "vpnr-showcase";
 
 interface RunPayload {
@@ -65,12 +67,27 @@ export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
   const sampleId = String(form.get("sample") ?? SAMPLES[0].id);
   const customHtml = String(form.get("html") ?? "");
-  if (Buffer.byteLength(customHtml) > MAX_CUSTOM_HTML_BYTES) {
-    throw new Response("Custom HTML too large (max 256 KB)", { status: 413 });
-  }
   const utmSource = String(form.get("utmSource") ?? "").slice(0, 100);
   const inlineStyles = form.get("inlineStyles") === "on";
   const sanitize = form.get("sanitize") === "on";
+  const bytes = Buffer.byteLength(customHtml);
+  if (bytes > MAX_CUSTOM_HTML_BYTES) {
+    // Inline form error, not a thrown Response: real marketing emails run
+    // 300KB+ and an error page for an oversized paste is hostile (user report
+    // hit this with a 316KB production email at the old 256KB cap).
+    return {
+      payload: {
+        sampleId,
+        inputName: "custom HTML",
+        inputHtml: "",
+        utmSource,
+        inlineStyles,
+        sanitize,
+        run: null,
+        error: `Custom HTML too large: ${(bytes / 1024).toFixed(0)} KB (max ${MAX_CUSTOM_HTML_BYTES / (1024 * 1024)} MB)`,
+      },
+    };
+  }
   return { payload: await execute(sampleId, customHtml, utmSource, inlineStyles, sanitize) };
 }
 
