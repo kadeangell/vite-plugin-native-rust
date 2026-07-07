@@ -1,5 +1,16 @@
 # Plan: showcase demos with real Rust crates
 
+> **Status: SHIPPED (2026-07-06).** All four demos live at
+> https://vpnr-showcase.vercel.app with a live A/B `/benchmarks` page.
+> Headlines (release builds, honest medians): tantivy 6–10× per query vs
+> minisearch (the real pitch is capability + headroom); images ~9× vs jimp
+> with WebP/AVIF output JS can't encode; lol_html+ammonia ~4.5–5.2× vs
+> cheerio+sanitize-html with 9 live correctness checks; argon2's event-loop
+> experiment: sync export blocks the loop 245ms straight, async keeps it
+> under 0.8ms. Patterns distilled into docs/rust-patterns.md. Key
+> cross-cutting find (all four agents independently): debug dev builds can
+> INVERT benchmark results — the showcase pins `profile: "release"`.
+
 ## Goal
 
 Replace "look, it adds numbers" with demos where the Rust crate ecosystem does
