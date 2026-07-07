@@ -154,6 +154,7 @@ instead of serving a stale binary.
 | Doc | What it covers |
 | --- | --- |
 | [how-it-works.md](docs/how-it-works.md) | The resolve → load → compile → cache → emit pipeline, and why it survives bundling and serverless tracing. |
+| [rust-patterns.md](docs/rust-patterns.md) | Copyable napi patterns from the showcase: async-vs-sync, Buffers + options structs, stateful libs, Result errors, and why debug builds lie about perf. |
 | [typescript.md](docs/typescript.md) | `allowArbitraryExtensions`, the generated `.d.rs.ts`, committing types for CI, and proof the types are real. |
 | [testing.md](docs/testing.md) | The vitest story: `rustPlugin()` in the vitest config, the `rustTestStub` JS-twin helper, and the `test.projects` setup. |
 | [deployment-vercel.md](docs/deployment-vercel.md) | `vercelPreset`, the install/build scripts, the toolchain reality, cache strategy, and monorepo notes. |
@@ -165,6 +166,7 @@ instead of serving a stale binary.
 
 - **[`vite-plugin-native-rust`](packages/vite-plugin-native-rust)** — the Vite plugin.
 - **[`create-native-rust`](packages/create-native-rust)** — the `npm create native-rust` scaffolding CLI.
+- **[`examples/showcase`](examples/showcase)** — real crates.io integrations with live JS-baseline A/Bs: [tantivy](https://crates.io/crates/tantivy) full-text search (sub-ms BM25 queries vs minisearch), an image pipeline (SIMD resize + WebP/AVIF — ~9× jimp, in formats JS can't encode), a streaming [lol_html](https://crates.io/crates/lol_html) + ammonia email-HTML transformer (~5× cheerio), and argon2 hashing with a measured event-loop-starvation experiment. Live at vpnr-showcase.vercel.app with a [/benchmarks](https://vpnr-showcase.vercel.app/benchmarks) page that runs every A/B per request.
 - **[`examples/react-router`](examples/react-router)** — React Router v7 app with the Rust A/B routes and Vercel wiring.
 - **[`examples/sveltekit`](examples/sveltekit)** — SvelteKit + adapter-vercel; plugin works out of the box (Vite 8 / rolldown).
 - **[`examples/astro`](examples/astro)** — Astro SSR + @astrojs/vercel; plugin works out of the box.
