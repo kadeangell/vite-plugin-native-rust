@@ -1,0 +1,13 @@
+# Build outputs and caches — Vercel builds from source remotely; uploading
+# these ballooned the CLI upload past limits (755MB / 25k files).
+build/
+dist/
+.output/
+.vinxi/
+.svelte-kit/
+.next/
+.react-router/
+.astro/
+target/
+*.node
+.claude/
