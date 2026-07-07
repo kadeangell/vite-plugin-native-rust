@@ -5,7 +5,10 @@ import { defineConfig } from "tsup";
 // plus a `.d.ts`. esbuild resolves the `.ts` specifiers and emits `.js`, so the
 // shipped dist never depends on being transpiled by a consumer's Vite.
 export default defineConfig({
-  entry: ["src/index.ts"],
+  // `src/nitro.ts` is the `vite-plugin-native-rust/nitro` subpath (Nitro 2.x
+  // adapter). It imports from index.ts; esm code-splitting shares that code
+  // in a common chunk instead of duplicating the plugin.
+  entry: ["src/index.ts", "src/nitro.ts"],
   format: ["esm"],
   target: "node20",
   platform: "node",
