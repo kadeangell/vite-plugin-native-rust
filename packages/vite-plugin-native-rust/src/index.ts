@@ -3,13 +3,6 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 
 import type { Plugin } from "vite";
 
-import { collectClosureInputs } from "./closure.ts";
-import {
-  assertCargoAvailable,
-  compileCrate,
-  ensureCrateBinaryName,
-  resolveNapiBin,
-} from "./compile.ts";
 import {
   type AddonExport,
   buildModuleSource,
@@ -18,17 +11,15 @@ import {
   ensureTsconfigOption,
   syncTypeDeclaration,
 } from "./codegen.ts";
-import { findCargoToml, hashInputs } from "./crate.ts";
-import { dedupeInFlight } from "./dedupe.ts";
+import { findCargoToml } from "./crate.ts";
 import { ensureAddonsBesideChunks, type EmittedAddon } from "./output.ts";
 import { resolveOptions, type RustPluginOptions } from "./options.ts";
 import {
-  isVitest,
-  resolveRelease,
-  shouldBypassSsrGate,
-  shouldUseDevShape,
-} from "./vitest.ts";
-import { getToolchainKey, toolchainKeyString } from "./toolchain.ts";
+  ensureCrateCompiled,
+  prewarmCrates,
+  recordCrateInManifest,
+} from "./prewarm.ts";
+import { isVitest, shouldBypassSsrGate, shouldUseDevShape } from "./vitest.ts";
 
 export type { RustPluginOptions } from "./options.ts";
 export { rustTestStub } from "./stub.ts";
@@ -86,6 +77,30 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
       if (opts.emitTypes && !underVitest) ensureTsconfigOption(root);
     },
 
+    // Dev-only pre-warm (issue #5): start cold cargo compiles at server
+    // startup so they race the developer's first request instead of blocking
+    // inside it (Nitro's module-runner invoke timeout is 60s → 500, and the
+    // failed module fetch stays cached until restart). Fire-and-forget: it
+    // must never delay startup or crash the server — `prewarmCrates` reports
+    // per-crate failures as warnings and never rejects. Skipped under vitest
+    // (tests compile on demand); build mode never calls this hook.
+    configureServer() {
+      if (underVitest || opts.prewarm === false) return;
+      const write = (message: string): void => {
+        process.stderr.write(message.endsWith("\n") ? message : `${message}\n`);
+      };
+      void prewarmCrates({
+        root,
+        cacheBase: cacheBaseDir(),
+        opts,
+        onLog: write,
+        onWarn: write,
+      }).catch((err: unknown) => {
+        // Belt and suspenders — prewarmCrates itself never rejects.
+        write(`[vite-rust] pre-warm failed: ${(err as Error).message}`);
+      });
+    },
+
     resolveId(source, importer) {
       const cleanSource = source.split("?")[0];
       if (!cleanSource.endsWith(".rs")) return null;
@@ -137,78 +152,37 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
         );
       }
 
+      // The shared compile-through-cache pipeline — the same one the dev
+      // pre-warm runs, so a load arriving mid-pre-warm coalesces onto the
+      // in-flight compile (same inputs → same cachePath → same dedupe key)
+      // instead of racing a second cargo process. Under vitest the profile
+      // default is debug (fast compile), matching dev — a machine that built
+      // the crate once reuses that cached debug binary at zero compile cost.
+      let cachePath: string;
       let binaryName: string;
-      try {
-        const config = ensureCrateBinaryName(crateDir, opts.generateCratePackageJson);
-        binaryName = config.binaryName;
-        if (config.generatedMessage) this.warn(config.generatedMessage);
-      } catch (err) {
-        return this.error((err as Error).message);
-      }
-
-      // Full local dependency closure (crate + path/workspace deps + workspace
-      // Cargo.toml + lockfile): fold every file into both the watch set and the
-      // cache hash so a sibling path-dep or lockfile change recompiles.
-      const inputs = await collectClosureInputs(crateDir, {
-        onWarn: (message) => this.warn(message),
-      });
-      for (const input of inputs) this.addWatchFile(input);
-
-      // Toolchain fingerprint in the key: a rustc / napi-cli upgrade invalidates
-      // even byte-identical sources. Resolve the CLI defensively so computing the
-      // key never hard-fails before the actual compile step.
-      let napiBin: string | null = null;
-      try {
-        napiBin = resolveNapiBin();
-      } catch {
-        napiBin = null;
-      }
-      const toolchain = toolchainKeyString(await getToolchainKey(napiBin));
-
       let hash: string;
       try {
-        hash = hashInputs(crateDir, inputs, toolchain);
+        const compiled = await ensureCrateCompiled({
+          crateDir,
+          cacheBase: cacheBaseDir(),
+          opts,
+          watchMode: this.meta.watchMode === true,
+          underVitest,
+          onWarn: (message) => this.warn(message),
+        });
+        ({ cachePath, binaryName, hash } = compiled);
+        // Full local dependency closure: fold every file into the watch set so
+        // a sibling path-dep or lockfile change recompiles.
+        for (const input of compiled.inputs) this.addWatchFile(input);
       } catch (err) {
         return this.error((err as Error).message);
       }
 
-      // Both profiles overwrite the same napi output path, so the profile is
-      // part of the cache key and filename. Under vitest the default is debug
-      // (fast compile), matching dev — a machine that built the crate once
-      // reuses that cached debug binary at zero compile cost.
-      const release = resolveRelease(
-        opts.profile,
-        this.meta.watchMode === true,
-        underVitest,
-      );
-      const profile = release ? "release" : "debug";
-      const cachePath = join(
-        cacheBaseDir(),
-        `${binaryName}-${hash}-${profile}.node`,
-      );
-
-      try {
-        await dedupeInFlight(cachePath, async () => {
-          if (existsSync(cachePath)) return;
-          const bin = napiBin ?? resolveNapiBin();
-          await assertCargoAvailable();
-          if (opts.logLevel !== "silent") {
-            process.stderr.write(
-              `[vite-rust] compiling crate "${binaryName}" (${profile}); ` +
-                "first build can take 30s+…\n",
-            );
-          }
-          await compileCrate({
-            napiBin: bin,
-            crateDir,
-            binaryName,
-            release,
-            cachePath,
-            napiArgs: opts.napiArgs,
-          });
-        });
-      } catch (err) {
-        return this.error((err as Error).message);
+      // Remember the crate for next session's dev pre-warm (issue #5). Skipped
+      // under vitest: test-fixture crates must not leak into dev pre-warms,
+      // and mid-test-run writes risk watch churn.
+      if (!underVitest && opts.prewarm !== false) {
+        recordCrateInManifest(cacheBaseDir(), crateDir, (m) => this.warn(m));
       }
 
       let keys: AddonExport[];

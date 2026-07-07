@@ -77,8 +77,9 @@ const five = add(2, 3);            // sync, on the main thread
 const total = await sumTo(1_000);  // async, off the event loop
 ```
 
-The first dev request that touches the crate triggers a cargo build (~30s cold,
-cached after). Every later request hits the cached addon.
+A cold cargo build (~30s) starts as soon as the dev server boots for crates the
+plugin has seen before (see `prewarm` below); otherwise the first dev request
+that touches the crate triggers it. Every later request hits the cached addon.
 
 ## Options
 
@@ -93,6 +94,7 @@ zero-argument behavior.
 | `generateCratePackageJson` | `boolean` | `true` | Write a `package.json` with `napi.binaryName` when the crate lacks one. `false` errors instead of mutating your crate. |
 | `emitTypes` | `boolean` | `true` | Mirror napi's generated types to a `.d.rs.ts` beside the imported `.rs`. |
 | `logLevel` | `'silent' \| 'info'` | `'info'` | `'silent'` suppresses compile-progress and type-write lines; warnings and errors always show. |
+| `prewarm` | `boolean \| string[]` | `true` | Pre-compile known crates when the dev server starts, so a cold cargo build races your first request instead of blocking inside it (some dev servers — e.g. Nitro — time out module fetches at ~60s and cache the failure until restart). `true` pre-warms crates remembered from previous sessions (a small manifest in `cacheDir`, updated on every compile); an array adds explicit anchors — a `.rs` file or crate dir, resolved against the Vite root — for first-ever runs where no manifest exists yet; `false` disables. A request arriving mid-pre-warm joins the in-flight compile instead of starting a second one, and a pre-warm failure is only a warning — the crate falls back to compiling on first import. |
 
 The cache key folds in the crate's full local dependency closure (path deps,
 workspace members, the workspace `Cargo.toml`, and the lockfile) plus the `rustc`

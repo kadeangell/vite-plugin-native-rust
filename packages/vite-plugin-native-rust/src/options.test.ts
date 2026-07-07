@@ -11,6 +11,7 @@ test("resolveOptions fills behavior-preserving defaults with no arguments", () =
   assert.equal(opts.generateCratePackageJson, true);
   assert.equal(opts.emitTypes, true);
   assert.equal(opts.logLevel, "info");
+  assert.deepEqual(opts.prewarm, [], "prewarm default is enabled, manifest-only");
 });
 
 test("resolveOptions({}) equals resolveOptions() — empty object is the same as absent", () => {
@@ -74,6 +75,28 @@ test("resolveOptions rejects non-boolean flags", () => {
 test("resolveOptions rejects an unknown logLevel", () => {
   // @ts-expect-error deliberate wrong value at the boundary
   assert.throws(() => resolveOptions({ logLevel: "verbose" }), /logLevel/);
+});
+
+test("resolveOptions normalizes prewarm: true→[], false→false, array→copy", () => {
+  assert.deepEqual(resolveOptions({ prewarm: true }).prewarm, []);
+  assert.equal(resolveOptions({ prewarm: false }).prewarm, false);
+  const anchors = ["./native", "./other/src/lib.rs"];
+  const opts = resolveOptions({ prewarm: anchors });
+  assert.deepEqual(opts.prewarm, anchors);
+  anchors.push("./evil");
+  assert.deepEqual(
+    opts.prewarm,
+    ["./native", "./other/src/lib.rs"],
+    "prewarm array is copied so later caller mutation cannot leak in",
+  );
+});
+
+test("resolveOptions rejects invalid prewarm values", () => {
+  // @ts-expect-error deliberate wrong type at the boundary
+  assert.throws(() => resolveOptions({ prewarm: "native" }), /prewarm/);
+  // @ts-expect-error deliberate wrong element type at the boundary
+  assert.throws(() => resolveOptions({ prewarm: [1] }), /prewarm/);
+  assert.throws(() => resolveOptions({ prewarm: ["  "] }), /prewarm/);
 });
 
 test("resolveOptions rejects a non-object argument", () => {

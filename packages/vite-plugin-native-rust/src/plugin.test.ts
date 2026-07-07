@@ -10,6 +10,11 @@ test("plugin exposes the expected Vite hook surface", () => {
   assert.equal(typeof plugin.config, "function");
   assert.equal(typeof plugin.resolveId, "function");
   assert.equal(typeof plugin.load, "function");
+  assert.equal(
+    typeof plugin.configureServer,
+    "function",
+    "dev pre-warm hook (issue #5)",
+  );
 });
 
 test("config hook forces ssrEmitAssets so the native addon ships in SSR builds", () => {

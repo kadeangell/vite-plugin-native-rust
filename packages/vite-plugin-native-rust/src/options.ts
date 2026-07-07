@@ -33,6 +33,16 @@ export interface RustPluginOptions {
    * `'silent'` suppresses them; warnings and errors are always shown.
    */
   logLevel?: "silent" | "info";
+  /**
+   * Pre-compile known crates when the dev server starts, so a cold cargo
+   * build races the developer's first request instead of blocking inside it
+   * (some dev servers time out module fetches at ~60s and cache the failure).
+   * `true` (default) pre-warms crates remembered from previous sessions via a
+   * small manifest in `cacheDir`. An array adds explicit anchors — a `.rs`
+   * file or crate dir, resolved against the Vite root — for first-ever runs
+   * where no manifest exists yet. `false` disables pre-warming.
+   */
+  prewarm?: boolean | string[];
 }
 
 /** Options after validation and default-filling. */
@@ -45,6 +55,12 @@ export interface ResolvedOptions {
   generateCratePackageJson: boolean;
   emitTypes: boolean;
   logLevel: "silent" | "info";
+  /**
+   * `false` = disabled. An array = enabled; its entries are the explicit
+   * anchors to pre-warm in addition to the cache-dir manifest (`[]` — the
+   * default, from `true`/absent — means manifest-only).
+   */
+  prewarm: false | readonly string[];
 }
 
 const PREFIX = "[vite-plugin-native-rust]";
@@ -64,8 +80,15 @@ export function resolveOptions(options: RustPluginOptions = {}): ResolvedOptions
     fail("expected an options object.");
   }
 
-  const { cacheDir, profile, napiArgs, generateCratePackageJson, emitTypes, logLevel } =
-    options;
+  const {
+    cacheDir,
+    profile,
+    napiArgs,
+    generateCratePackageJson,
+    emitTypes,
+    logLevel,
+    prewarm,
+  } = options;
 
   if (cacheDir !== undefined) {
     if (typeof cacheDir !== "string" || cacheDir.trim() === "") {
@@ -98,6 +121,18 @@ export function resolveOptions(options: RustPluginOptions = {}): ResolvedOptions
     fail(`\`logLevel\` must be "silent" or "info", got ${JSON.stringify(logLevel)}.`);
   }
 
+  if (prewarm !== undefined && typeof prewarm !== "boolean") {
+    const validArray =
+      Array.isArray(prewarm) &&
+      prewarm.every((entry) => typeof entry === "string" && entry.trim() !== "");
+    if (!validArray) {
+      fail(
+        "`prewarm` must be a boolean or an array of non-empty path strings " +
+          "(a `.rs` file or crate dir).",
+      );
+    }
+  }
+
   return {
     cacheDir: cacheDir ?? null,
     profile: profile ?? null,
@@ -105,5 +140,6 @@ export function resolveOptions(options: RustPluginOptions = {}): ResolvedOptions
     generateCratePackageJson: generateCratePackageJson ?? true,
     emitTypes: emitTypes ?? true,
     logLevel: logLevel ?? "info",
+    prewarm: prewarm === false ? false : Array.isArray(prewarm) ? [...prewarm] : [],
   };
 }
