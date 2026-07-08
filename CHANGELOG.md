@@ -1,8 +1,16 @@
 # Changelog
 
-## 0.3.1 (2026-07-07)
+## 0.3.1 (2026-07-08)
 
 ### vite-plugin-native-rust
+
+- Fix ([#7](https://github.com/kadeangell/vite-plugin-native-rust/issues/7)):
+  `.rs` imports resolve correctly when rolldown-vite (Vite 8) passes
+  project-root-relative importer ids ("/app/…" instead of real filesystem
+  paths). The resolved path is re-anchored under `config.root` when it isn't
+  on disk but the root-anchored form is — previously the crate walk climbed
+  the real filesystem from a directory that doesn't exist and failed with
+  "No Cargo.toml found" even though the crate compiled.
 
 - Fix ([#6](https://github.com/kadeangell/vite-plugin-native-rust/issues/6)):
   transient spawn failures are no longer misreported as a missing toolchain.

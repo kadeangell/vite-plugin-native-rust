@@ -3,6 +3,19 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, parse, relative, sep } from "node:path";
 
 /**
+ * Re-anchor a fake-absolute id under the Vite project root when needed.
+ * rolldown-vite (Vite 8) sometimes passes project-root-relative module ids
+ * that LOOK absolute ("/app/core/…") but don't exist on the real filesystem
+ * (issue #7). If `path` isn't on disk and `root + path` is, return the
+ * re-anchored form; otherwise return `path` unchanged.
+ */
+export function anchorToRoot(path: string, root: string): string {
+  if (existsSync(path)) return path;
+  const reAnchored = join(root, path.replace(/^[/\\]+/, ""));
+  return existsSync(reAnchored) ? reAnchored : path;
+}
+
+/**
  * Walk up from a `.rs` file's directory to the filesystem root, returning the
  * directory that contains `Cargo.toml`, or `null` if none exists on the way up.
  */

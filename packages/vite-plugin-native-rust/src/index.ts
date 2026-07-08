@@ -11,7 +11,7 @@ import {
   ensureTsconfigOption,
   syncTypeDeclaration,
 } from "./codegen.ts";
-import { findCargoToml } from "./crate.ts";
+import { anchorToRoot, findCargoToml } from "./crate.ts";
 import { ensureAddonsBesideChunks, type EmittedAddon } from "./output.ts";
 import { resolveOptions, type RustPluginOptions } from "./options.ts";
 import {
@@ -119,6 +119,13 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
         const importerDir = dirname(importer.split("?")[0]);
         absPath = resolve(importerDir, cleanSource);
       }
+      // rolldown-vite (Vite 8) can pass PROJECT-ROOT-RELATIVE importer ids
+      // ("/app/…" instead of a real filesystem path), which makes `absPath`
+      // fake-absolute: the crate walk in `load` then climbs the real
+      // filesystem from a directory that doesn't exist (issue #7). When the
+      // resolved path isn't on disk but re-anchoring it under config.root is,
+      // use the re-anchored path.
+      absPath = anchorToRoot(absPath, root);
       // Claim unconditionally — the SSR decision belongs in `load`.
       return `${absPath}${RUST_QUERY}`;
     },

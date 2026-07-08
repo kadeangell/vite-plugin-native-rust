@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 
-import { collectCrateInputs, findCargoToml, hashCrate } from "./crate.ts";
+import { anchorToRoot, collectCrateInputs, findCargoToml, hashCrate } from "./crate.ts";
 
 let root: string;
 
@@ -116,4 +116,24 @@ test("hashCrate throws a clear error naming the directory when the crate is miss
       return true;
     },
   );
+});
+
+test("anchorToRoot: re-anchors rolldown's fake-absolute ids under root (issue #7)", () => {
+  const root = mkdtempSync(join(tmpdir(), "vpnr-anchor-"));
+  try {
+    mkdirSync(join(root, "app", "native", "src"), { recursive: true });
+    writeFileSync(join(root, "app", "native", "src", "lib.rs"), "// rs");
+    // Fake-absolute (root-relative) id: not on disk at "/app/...", exists under root.
+    assert.equal(
+      anchorToRoot("/app/native/src/lib.rs", root),
+      join(root, "app", "native", "src", "lib.rs"),
+    );
+    // Genuinely absolute existing path: untouched.
+    const real = join(root, "app", "native", "src", "lib.rs");
+    assert.equal(anchorToRoot(real, root), real);
+    // Exists nowhere: returned unchanged (load errors with an honest path).
+    assert.equal(anchorToRoot("/no/such/file.rs", root), "/no/such/file.rs");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
