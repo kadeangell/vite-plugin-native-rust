@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.1 (2026-07-08)
+## 0.3.2 (2026-07-08)
 
 ### vite-plugin-native-rust
 
@@ -11,6 +11,10 @@
   on disk but the root-anchored form is — previously the crate walk climbed
   the real filesystem from a directory that doesn't exist and failed with
   "No Cargo.toml found" even though the crate compiled.
+
+## 0.3.1 (2026-07-07)
+
+### vite-plugin-native-rust
 
 - Fix ([#6](https://github.com/kadeangell/vite-plugin-native-rust/issues/6)):
   transient spawn failures are no longer misreported as a missing toolchain.
