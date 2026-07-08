@@ -42,7 +42,9 @@ export function isCommandNotFound(error: unknown): boolean {
 /**
  * `execFile` with ONE retry when the failure is a transient spawn error.
  * Everything else — ENOENT, non-zero exits, real crashes — propagates
- * immediately and untouched.
+ * immediately and untouched. A recovered retry is LOGGED (issue #6): field
+ * reports need to reveal whether an environment's EBADF is first-spawn-only
+ * (poisoned fd table absorbed by the retry) or a one-off flake.
  */
 export async function execFileTransientRetry(
   cmd: string,
@@ -54,6 +56,13 @@ export async function execFileTransientRetry(
     return await exec(cmd, args, opts);
   } catch (error: unknown) {
     if (!isTransientSpawnError(error)) throw error;
-    return exec(cmd, args, opts);
+    const code = String((error as { code?: unknown }).code);
+    const result = await exec(cmd, args, opts);
+    process.stderr.write(
+      `[vite-rust] transient spawn error (${code}) on \`${cmd}\` recovered on ` +
+        "retry — if this repeats every session, a native dependency in this " +
+        "process may be corrupting file descriptors (see issue #6)\n",
+    );
+    return result;
   }
 }

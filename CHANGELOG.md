@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.3 (2026-07-08)
+
+### vite-plugin-native-rust
+
+- Recovered transient-spawn retries are now logged
+  (`[vite-rust] transient spawn error (EBADF) on \`cargo\` recovered on
+  retry…`) so field reports can distinguish a first-spawn-only poisoned fd
+  table from a one-off flake (issue #6 follow-up). A boundary search
+  established the EBADF class is not reachable via shell piping / closed
+  stdio / fd churn / ulimits on a healthy Node — the working theory is a
+  native dependency in the host process double-closing file descriptors.
+
 ## 0.3.2 (2026-07-08)
 
 ### vite-plugin-native-rust
