@@ -236,11 +236,24 @@ opens one fd per watched file — a vendored Python env, a dataset directory, or
 a cargo `target/` tree inside the watched root can contribute tens of
 thousands.
 
-**Diagnose:** as of 0.3.5 the plugin diagnoses this for you. When a cargo spawn
-fails (or recovers on retry) while the process is holding a pathological number
-of fds, the error/warning names the count directly — e.g. *"this process is
-holding 31204 open file descriptors, which breaks child-process spawning"*. If
-you see that, you have your answer; skip straight to the fix.
+**As of 0.4.0 the plugin is immune to this by default.** A long-lived *spawn
+broker* helper process is forked at dev-server init, while the fd table is
+still small, and every cargo/napi spawn is routed through it over an
+already-open IPC channel. The broker's own fd table stays clean, so it keeps
+compiling no matter how poisoned the dev-server process becomes — the symptom
+above no longer breaks compiles, transparently and with no config. It costs one
+idle Node process (~40MB) per dev server, is dev-only (production builds spawn
+directly), and can be turned off with `spawnBroker: false`. If it ever fails to
+start or dies, the plugin falls back to the direct-spawn path (with the
+diagnosis below). The underlying watcher fd leak is still worth fixing — the
+broker makes compiles survive it, but a runaway fd table is unhealthy for the
+rest of your dev server.
+
+**Diagnose (direct-spawn fallback):** when the broker is off or unavailable and
+a cargo spawn fails (or recovers on retry) while the process is holding a
+pathological number of fds, the plugin names the count directly — e.g. *"this
+process is holding 31204 open file descriptors, which breaks child-process
+spawning"*. If you see that, you have your answer; skip straight to the fix.
 
 **Confirming the holder:** to see *which* tree is eating the fds, inspect the
 Vite process with `lsof`: `lsof -p <vite pid> | wc -l` shows the total (tens of

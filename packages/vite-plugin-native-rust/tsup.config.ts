@@ -8,7 +8,11 @@ export default defineConfig({
   // `src/nitro.ts` is the `vite-plugin-native-rust/nitro` subpath (Nitro 2.x
   // adapter). It imports from index.ts; esm code-splitting shares that code
   // in a common chunk instead of duplicating the plugin.
-  entry: ["src/index.ts", "src/nitro.ts"],
+  //
+  // `src/broker-child.ts` is the spawn-broker sidecar (issue #8): its own entry
+  // (→ `dist/broker-child.js`), forked by the plugin via an absolute path and
+  // deliberately NOT a package export — it is an internal runtime artifact.
+  entry: ["src/index.ts", "src/nitro.ts", "src/broker-child.ts"],
   format: ["esm"],
   target: "node20",
   platform: "node",

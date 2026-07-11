@@ -74,7 +74,14 @@ export type ExecFn = (
   opts?: { cwd?: string; maxBuffer?: number },
 ) => Promise<ExecResult>;
 
-const defaultExec: ExecFn = async (cmd, args, opts) => {
+/**
+ * The direct (non-brokered) spawn: a thin `execFile` wrapper. This is the
+ * fallback path whenever the spawn broker (issue #8) is disabled, unavailable,
+ * or has died — and the default `exec` for every seam below. A synchronous
+ * `spawn EBADF` throw (issue #6) surfaces as a rejection here because the
+ * function is `async`, so the existing transient-retry/diagnosis catch works.
+ */
+export const directExec: ExecFn = async (cmd, args, opts) => {
   const { stdout, stderr } = await execFileAsync(cmd, args, opts);
   return { stdout: String(stdout), stderr: String(stderr) };
 };
@@ -101,7 +108,7 @@ export async function execFileTransientRetry(
   cmd: string,
   args: string[],
   opts?: { cwd?: string; maxBuffer?: number },
-  exec: ExecFn = defaultExec,
+  exec: ExecFn = directExec,
   fdCount: FdCounter = processFdCount,
 ): Promise<ExecResult> {
   try {

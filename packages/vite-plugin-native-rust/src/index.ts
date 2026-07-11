@@ -11,6 +11,7 @@ import {
   ensureTsconfigOption,
   syncTypeDeclaration,
 } from "./codegen.ts";
+import { type Broker, makeSessionExec, startBroker } from "./broker.ts";
 import { anchorToRoot, findCargoToml } from "./crate.ts";
 import { ensureAddonsBesideChunks, type EmittedAddon } from "./output.ts";
 import { resolveOptions, type RustPluginOptions } from "./options.ts";
@@ -20,6 +21,7 @@ import {
   prewarmCrates,
   recordCrateInManifest,
 } from "./prewarm.ts";
+import { directExec, type ExecFn, processFdCount } from "./spawn.ts";
 import { isVitest, shouldBypassSsrGate, shouldUseDevShape } from "./vitest.ts";
 
 export type { RustPluginOptions } from "./options.ts";
@@ -27,6 +29,28 @@ export { rustTestStub } from "./stub.ts";
 
 const RUST_QUERY = "?rust";
 const DEFAULT_CACHE_SUBDIR = join("node_modules", ".cache", "vite-rust");
+
+// Process-wide spawn broker (issue #8). Frameworks such as React Router
+// construct more than one plugin instance in a single dev process (one per
+// Vite environment — client + SSR), each of which runs the `config` hook; a
+// per-process singleton keeps that to a single sidecar. It is the natural
+// model anyway — the broker is shared spawn infrastructure, not per-instance
+// state. The `alive` re-check lets a dev-server restart (Vite disposes and
+// re-creates plugins in the same process) start a fresh broker after the old
+// one was torn down.
+let processBroker: Broker | null = null;
+
+function ensureProcessBroker(): Broker | null {
+  if (processBroker !== null && processBroker.alive) return processBroker;
+  processBroker = startBroker();
+  return processBroker;
+}
+
+function disposeProcessBroker(): void {
+  if (processBroker === null) return;
+  processBroker.dispose();
+  processBroker = null;
+}
 
 interface LoadOptions {
   ssr?: boolean;
@@ -50,6 +74,28 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
   // fileName. `writeBundle` uses these to guarantee each addon survives next to
   // the chunks that reference it (issue #1).
   const emittedAddons = new Map<string, EmittedAddon>();
+
+  // Spawn broker (issue #8): a helper process forked at dev init, while the
+  // host fd table is still small, that runs every cargo/napi spawn with a clean
+  // fd table — so compiles survive a poisoned host (issue #6). Acquired from a
+  // per-process singleton in the `config` hook for dev only (see below);
+  // `sessionExec` routes through it when alive and falls back to a direct spawn
+  // otherwise. In build mode / under vitest the broker is never started and
+  // `sessionExec` stays direct.
+  let sessionExec: ExecFn = directExec;
+  const disposeBroker = (): void => {
+    disposeProcessBroker();
+    sessionExec = directExec;
+  };
+
+  // Optional fd-count instrumentation (VITE_RUST_BROKER_DEBUG): reveals how the
+  // host fd table grows across the dev lifecycle, justifying why the broker
+  // starts at `config` (earliest, smallest table) rather than after the watcher
+  // attaches. No-op unless the env var is set.
+  const fdDebug = (hook: string): void => {
+    if (!process.env.VITE_RUST_BROKER_DEBUG) return;
+    process.stderr.write(`[vite-rust] fd-count @ ${hook}: ${processFdCount()}\n`);
+  };
 
   const cacheBaseDir = (): string => {
     if (!opts.cacheDir) return join(root, DEFAULT_CACHE_SUBDIR);
@@ -77,7 +123,23 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
     name: "vite-rust",
     enforce: "pre",
 
-    config(userConfig) {
+    config(userConfig, env) {
+      fdDebug("config");
+      // Start the spawn broker as early as possible (issue #8): this hook runs
+      // before Vite creates the dev watcher, so the host's fd table is at its
+      // smallest and the forked child inherits a clean one. Dev only — a build
+      // is short-lived and watcher-free (`env.command === "build"`), so direct
+      // spawning stays. Skipped under vitest (tests spawn on demand in-process)
+      // and when the option is off. Never throws: `startBroker` returns null on
+      // failure and `sessionExec` stays direct.
+      //
+      // `ensureProcessBroker` dedups across plugin instances (React Router
+      // resolves config once per Vite environment), so this forks at most one
+      // sidecar per dev process.
+      if (opts.spawnBroker && env?.command === "serve" && !isVitest(userConfig)) {
+        sessionExec = makeSessionExec(ensureProcessBroker(), directExec);
+      }
+
       // Two guarantees (user config always wins where it conflicts):
       // 1. `ssrEmitAssets` — Vite drops SSR-build assets otherwise, so a bare
       //    `vite build --ssr` would ship a server that can't find its addon.
@@ -104,6 +166,7 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
     },
 
     configResolved(config) {
+      fdDebug("configResolved");
       root = config.root;
       underVitest = isVitest(config);
       // Skip tsconfig mutation under vitest: it's an editor/typecheck concern,
@@ -120,7 +183,14 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
     // per-crate failures as warnings and never rejects. Skipped under vitest
     // (tests compile on demand); build mode never calls this hook.
     configureServer(server) {
+      fdDebug("configureServer");
       devWatcher = server.watcher;
+      // Tear the broker down promptly when the dev server closes. Vite's
+      // shutdown path across versions is inconsistent about calling the Rollup
+      // `closeBundle`/`buildEnd` hooks for a dev server, so hook the underlying
+      // http server's `close` here too; all dispose paths are idempotent, and
+      // the child's own ppid check is the ultimate safety net regardless.
+      server.httpServer?.once("close", disposeBroker);
       if (underVitest || opts.prewarm === false) return;
       const write = (message: string): void => {
         process.stderr.write(message.endsWith("\n") ? message : `${message}\n`);
@@ -131,6 +201,7 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
         opts,
         onLog: write,
         onWarn: write,
+        exec: sessionExec,
       }).catch((err: unknown) => {
         // Belt and suspenders — prewarmCrates itself never rejects.
         write(`[vite-rust] pre-warm failed: ${(err as Error).message}`);
@@ -213,6 +284,7 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
           watchMode: this.meta.watchMode === true,
           underVitest,
           onWarn: (message) => this.warn(message),
+          exec: sessionExec,
         });
         ({ cachePath, binaryName, hash } = compiled);
         // Full local dependency closure: fold every file into the watch set so
@@ -296,6 +368,18 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
           );
         }
       }
+    },
+
+    // Dispose the broker when Vite closes the plugin container. Vite calls
+    // these on dev-server shutdown in most versions (and always at build end,
+    // where the broker is null anyway); combined with the http-server `close`
+    // hook above and the child's ppid check, the sidecar never outlives the
+    // host. Idempotent — safe to fire more than once.
+    buildEnd() {
+      disposeBroker();
+    },
+    closeBundle() {
+      disposeBroker();
     },
   };
 }
