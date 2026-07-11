@@ -19,7 +19,7 @@
  * point it at the `.ts` source (type-stripped) during unit tests.
  */
 import { execFileSync } from "node:child_process";
-import { openSync } from "node:fs";
+import { closeSync, openSync } from "node:fs";
 
 import { startBroker } from "./broker.ts";
 import { directExec, type ExecFn } from "./spawn.ts";
@@ -54,6 +54,12 @@ async function runLeg(
 }
 
 async function main(): Promise<void> {
+  // Force `process.stdout`'s lazy socket to initialize NOW, while the fd table
+  // is still clean. Under a low `kern.maxfilesperproc` (some CI macOS runners)
+  // the poisoning loop can consume every last fd, and creating stdout later —
+  // it needs a fresh fd — would then throw EMFILE before the result is written.
+  process.stdout.write("");
+
   const childPath = process.env.BROKER_CHILD_PATH;
   const broker = startBroker(childPath ? { childPath } : {});
   if (!broker) {
@@ -63,7 +69,9 @@ async function main(): Promise<void> {
 
   const { cmd, args } = pickCommand();
 
-  // Poison this process's fd table exactly as issue #6 does.
+  // Poison this process's fd table exactly as issue #6 does. A runner whose
+  // ceiling is below the ~24k EBADF cliff hits EMFILE first (recorded, not
+  // fatal) — the parent test skips the direct-fails assertion in that case.
   const held: number[] = [];
   let openError: string | number | undefined;
   for (let i = 0; i < TARGET_FDS; i++) {
@@ -79,6 +87,18 @@ async function main(): Promise<void> {
   const direct = await runLeg(directExec, cmd, args);
 
   broker.dispose();
+
+  // Release the fds before printing: the result line goes through stdout, and a
+  // still-full table can block any fd the write path needs on a constrained
+  // runner.
+  for (const fd of held) {
+    try {
+      closeSync(fd);
+    } catch {
+      // best effort — we're exiting anyway
+    }
+  }
+
   process.stdout.write(
     `__RESULT__${JSON.stringify({
       heldFds: held.length,
@@ -89,8 +109,6 @@ async function main(): Promise<void> {
       direct,
     })}\n`,
   );
-  // Some of the 24.5k fds keep the event loop from settling instantly; exit
-  // explicitly now that the result is written.
   process.exit(0);
 }
 
