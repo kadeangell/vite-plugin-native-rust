@@ -1,7 +1,6 @@
-import { execFile } from "node:child_process";
-
 import {
   describeFdPressure,
+  directExec,
   execFileTransientRetry,
   isCommandNotFound,
   processFdCount,
@@ -19,9 +18,7 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import { basename, dirname, join } from "node:path";
-import { promisify } from "node:util";
 
-const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 
 /**
@@ -157,6 +154,12 @@ export interface CompileParams {
   cachePath: string;
   /** Extra args appended to `napi build` (from `RustPluginOptions.napiArgs`). */
   napiArgs?: readonly string[];
+  /**
+   * Spawn seam: the session exec (brokered when the issue-#8 broker is alive,
+   * direct otherwise). Defaults to a direct `execFile` so a napi build under
+   * fd pressure routes through the broker's clean fd table when one exists.
+   */
+  exec?: ExecFn;
 }
 
 /**
@@ -188,13 +191,21 @@ export function atomicCopy(
  * so they are surfaced rather than buried.
  */
 export async function compileCrate(params: CompileParams): Promise<void> {
-  const { napiBin, crateDir, binaryName, release, cachePath, napiArgs = [] } = params;
+  const {
+    napiBin,
+    crateDir,
+    binaryName,
+    release,
+    cachePath,
+    napiArgs = [],
+    exec = directExec,
+  } = params;
   const args = ["build"];
   if (release) args.push("--release");
   args.push(...napiArgs);
 
   try {
-    await execFileAsync(process.execPath, [napiBin, ...args], {
+    await exec(process.execPath, [napiBin, ...args], {
       cwd: crateDir,
       maxBuffer: 64 * 1024 * 1024,
     });

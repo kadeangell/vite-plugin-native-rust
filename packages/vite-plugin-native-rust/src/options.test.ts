@@ -12,6 +12,16 @@ test("resolveOptions fills behavior-preserving defaults with no arguments", () =
   assert.equal(opts.emitTypes, true);
   assert.equal(opts.logLevel, "info");
   assert.deepEqual(opts.prewarm, [], "prewarm default is enabled, manifest-only");
+  assert.equal(opts.spawnBroker, true, "spawn broker on by default (issue #8)");
+});
+
+test("resolveOptions accepts spawnBroker and rejects a non-boolean", () => {
+  assert.equal(resolveOptions({ spawnBroker: false }).spawnBroker, false);
+  assert.equal(resolveOptions({ spawnBroker: true }).spawnBroker, true);
+  assert.throws(
+    () => resolveOptions({ spawnBroker: "yes" as unknown as boolean }),
+    /spawnBroker/,
+  );
 });
 
 test("resolveOptions({}) equals resolveOptions() — empty object is the same as absent", () => {

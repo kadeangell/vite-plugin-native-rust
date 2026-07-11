@@ -4,8 +4,10 @@ import { dirname, join, parse } from "node:path";
 import { collectCrateInputs } from "./crate.ts";
 import {
   describeFdPressure,
+  directExec,
   execFileTransientRetry,
   processFdCount,
+  type ExecFn,
   type FdCounter,
 } from "./spawn.ts";
 
@@ -35,6 +37,12 @@ export interface ClosureOptions {
   onWarn?: (message: string) => void;
   /** Override the open-fd counter (tests inject a fixed value). */
   fdCount?: FdCounter;
+  /**
+   * Spawn seam for the default `cargo metadata` / `generate-lockfile` runners:
+   * the session exec (brokered when the issue-#8 broker is alive, direct
+   * otherwise). Ignored when `runMetadata`/`runGenerateLockfile` are supplied.
+   */
+  exec?: ExecFn;
 }
 
 /**
@@ -51,22 +59,30 @@ function fdPressureSuffix(fdCount: FdCounter): string {
 
 // Both default runners retry once on transient spawn errors (macOS EBADF
 // flake, issue #6) so a system hiccup doesn't degrade to single-crate hashing.
-const defaultRunMetadata: MetadataRunner = async (crateDir) => {
-  const { stdout } = await execFileTransientRetry(
-    "cargo",
-    ["metadata", "--format-version", "1", "--manifest-path", join(crateDir, "Cargo.toml")],
-    { cwd: crateDir, maxBuffer: 64 * 1024 * 1024 },
-  );
-  return JSON.parse(stdout) as CargoMetadata;
-};
+// `exec` is the session spawn seam — brokered when the issue-#8 broker is alive
+// (so metadata spawns survive fd pressure), direct otherwise.
+function makeDefaultRunMetadata(exec: ExecFn): MetadataRunner {
+  return async (crateDir) => {
+    const { stdout } = await execFileTransientRetry(
+      "cargo",
+      ["metadata", "--format-version", "1", "--manifest-path", join(crateDir, "Cargo.toml")],
+      { cwd: crateDir, maxBuffer: 64 * 1024 * 1024 },
+      exec,
+    );
+    return JSON.parse(stdout) as CargoMetadata;
+  };
+}
 
-const defaultRunGenerateLockfile: LockfileRunner = async (crateDir) => {
-  await execFileTransientRetry(
-    "cargo",
-    ["generate-lockfile", "--manifest-path", join(crateDir, "Cargo.toml")],
-    { cwd: crateDir, maxBuffer: 16 * 1024 * 1024 },
-  );
-};
+function makeDefaultRunGenerateLockfile(exec: ExecFn): LockfileRunner {
+  return async (crateDir) => {
+    await execFileTransientRetry(
+      "cargo",
+      ["generate-lockfile", "--manifest-path", join(crateDir, "Cargo.toml")],
+      { cwd: crateDir, maxBuffer: 16 * 1024 * 1024 },
+      exec,
+    );
+  };
+}
 
 /**
  * What `cargo metadata` tells us about the local (non-registry) footprint of a
@@ -275,9 +291,10 @@ export async function collectClosureInputs(
   crateDir: string,
   options: ClosureOptions = {},
 ): Promise<string[]> {
-  const runMetadata = options.runMetadata ?? defaultRunMetadata;
+  const exec = options.exec ?? directExec;
+  const runMetadata = options.runMetadata ?? makeDefaultRunMetadata(exec);
   const runGenerateLockfile =
-    options.runGenerateLockfile ?? defaultRunGenerateLockfile;
+    options.runGenerateLockfile ?? makeDefaultRunGenerateLockfile(exec);
   const fdCount = options.fdCount ?? processFdCount;
   await ensureLockfile(crateDir, runGenerateLockfile, fdCount, options.onWarn);
   try {

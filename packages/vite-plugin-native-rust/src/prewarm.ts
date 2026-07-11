@@ -20,6 +20,7 @@ import {
 import { findCargoToml, hashInputs } from "./crate.ts";
 import { dedupeInFlight } from "./dedupe.ts";
 import type { ResolvedOptions } from "./options.ts";
+import { directExec, type ExecFn } from "./spawn.ts";
 import { getToolchainKey, toolchainKeyString } from "./toolchain.ts";
 import { resolveRelease } from "./vitest.ts";
 
@@ -143,16 +144,26 @@ export interface CompilePipelineDeps {
   compile: (params: CompileParams) => Promise<void>;
 }
 
-const defaultDeps: CompilePipelineDeps = {
-  ensureBinaryName: ensureCrateBinaryName,
-  collectInputs: collectClosureInputs,
-  resolveBin: resolveNapiBin,
-  toolchainString: async (napiBin) => toolchainKeyString(await getToolchainKey(napiBin)),
-  hash: hashInputs,
-  dedupe: dedupeInFlight,
-  assertCargo: assertCargoAvailable,
-  compile: compileCrate,
-};
+// Default pipeline pieces bound to a spawn seam (`exec`): the brokered session
+// exec when the issue-#8 broker is alive, direct otherwise. Every cargo/napi
+// spawn in the pipeline — preflight, metadata, lockfile, toolchain fingerprint,
+// napi build — flows through it, so a poisoned host fd table (issue #6) is
+// bypassed via the broker's clean table. Tests still override individual
+// pieces through the `deps` argument to {@link ensureCrateCompiled}.
+function makeDefaultDeps(exec: ExecFn): CompilePipelineDeps {
+  return {
+    ensureBinaryName: ensureCrateBinaryName,
+    collectInputs: (crateDir, options) =>
+      collectClosureInputs(crateDir, { ...options, exec }),
+    resolveBin: resolveNapiBin,
+    toolchainString: async (napiBin) =>
+      toolchainKeyString(await getToolchainKey(napiBin, exec)),
+    hash: hashInputs,
+    dedupe: dedupeInFlight,
+    assertCargo: () => assertCargoAvailable(exec),
+    compile: (params) => compileCrate({ ...params, exec: params.exec ?? exec }),
+  };
+}
 
 export interface EnsureCompiledParams {
   crateDir: string;
@@ -163,6 +174,12 @@ export interface EnsureCompiledParams {
   underVitest: boolean;
   /** Non-fatal notices (generated package.json, metadata fallback). */
   onWarn: (message: string) => void;
+  /**
+   * Session spawn seam threaded into every cargo/napi call. Defaults to a
+   * direct `execFile`; the plugin passes a brokered exec (issue #8) so compiles
+   * survive host fd-table exhaustion.
+   */
+  exec?: ExecFn;
 }
 
 export interface CompiledCrate {
@@ -190,7 +207,10 @@ export async function ensureCrateCompiled(
   deps: Partial<CompilePipelineDeps> = {},
 ): Promise<CompiledCrate> {
   const { crateDir, cacheBase, opts, watchMode, underVitest, onWarn } = params;
-  const d: CompilePipelineDeps = { ...defaultDeps, ...deps };
+  const d: CompilePipelineDeps = {
+    ...makeDefaultDeps(params.exec ?? directExec),
+    ...deps,
+  };
 
   const config = d.ensureBinaryName(crateDir, opts.generateCratePackageJson);
   if (config.generatedMessage) onWarn(config.generatedMessage);
@@ -309,6 +329,8 @@ export interface PrewarmParams {
   onLog: (message: string) => void;
   /** Warnings; always emitted. */
   onWarn: (message: string) => void;
+  /** Session spawn seam (brokered when the issue-#8 broker is alive). */
+  exec?: ExecFn;
 }
 
 export interface PrewarmResult {
@@ -327,7 +349,7 @@ export async function prewarmCrates(
   params: PrewarmParams,
   deps: Partial<CompilePipelineDeps> = {},
 ): Promise<PrewarmResult> {
-  const { root, cacheBase, opts, onLog, onWarn } = params;
+  const { root, cacheBase, opts, onLog, onWarn, exec } = params;
   if (opts.prewarm === false) return { warmed: [], failed: [] };
   const info = (message: string): void => {
     if (opts.logLevel !== "silent") onLog(message);
@@ -350,7 +372,7 @@ export async function prewarmCrates(
   for (const crateDir of crateDirs) {
     try {
       await ensureCrateCompiled(
-        { crateDir, cacheBase, opts, watchMode: true, underVitest: false, onWarn },
+        { crateDir, cacheBase, opts, watchMode: true, underVitest: false, onWarn, exec },
         deps,
       );
       warmed.push(crateDir);

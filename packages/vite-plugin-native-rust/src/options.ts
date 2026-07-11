@@ -43,6 +43,14 @@ export interface RustPluginOptions {
    * where no manifest exists yet. `false` disables pre-warming.
    */
   prewarm?: boolean | string[];
+  /**
+   * Route cargo/napi spawns through a long-lived helper process started at dev
+   * init, so compiles stay immune to file-descriptor exhaustion in the
+   * dev-server process (issue #6/#8). Default `true` (dev only; builds always
+   * spawn directly). `false` disables the broker and spawns directly with the
+   * existing transient-retry + fd diagnosis.
+   */
+  spawnBroker?: boolean;
 }
 
 /** Options after validation and default-filling. */
@@ -61,6 +69,8 @@ export interface ResolvedOptions {
    * default, from `true`/absent — means manifest-only).
    */
   prewarm: false | readonly string[];
+  /** Start the dev-only spawn broker (issue #8). Default `true`. */
+  spawnBroker: boolean;
 }
 
 const PREFIX = "[vite-plugin-native-rust]";
@@ -88,6 +98,7 @@ export function resolveOptions(options: RustPluginOptions = {}): ResolvedOptions
     emitTypes,
     logLevel,
     prewarm,
+    spawnBroker,
   } = options;
 
   if (cacheDir !== undefined) {
@@ -133,6 +144,10 @@ export function resolveOptions(options: RustPluginOptions = {}): ResolvedOptions
     }
   }
 
+  if (spawnBroker !== undefined && typeof spawnBroker !== "boolean") {
+    fail("`spawnBroker` must be a boolean.");
+  }
+
   return {
     cacheDir: cacheDir ?? null,
     profile: profile ?? null,
@@ -141,5 +156,6 @@ export function resolveOptions(options: RustPluginOptions = {}): ResolvedOptions
     emitTypes: emitTypes ?? true,
     logLevel: logLevel ?? "info",
     prewarm: prewarm === false ? false : Array.isArray(prewarm) ? [...prewarm] : [],
+    spawnBroker: spawnBroker ?? true,
   };
 }

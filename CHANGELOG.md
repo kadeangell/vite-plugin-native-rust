@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.4.0 (2026-07-10)
+
+### vite-plugin-native-rust
+
+- Spawn broker: compiles are now **immune to file-descriptor exhaustion** in
+  the dev-server process by default ([#8](https://github.com/kadeangell/vite-plugin-native-rust/issues/8),
+  building on [#6](https://github.com/kadeangell/vite-plugin-native-rust/issues/6)).
+  A bloated watcher fd table breaks *all* `child_process` spawning past ~24k
+  open fds on macOS/Node (`spawn EBADF`); 0.3.5 could only diagnose it. The
+  plugin now forks a long-lived helper process at dev init — while the host fd
+  table is still small — and routes every cargo/napi spawn (preflight, `cargo
+  metadata`, `generate-lockfile`, `rustc -V`, `napi build`) through it over the
+  already-open IPC channel. The broker's own fd table stays clean, so it keeps
+  compiling no matter how poisoned the host becomes. Error fidelity is
+  preserved end to end (ENOENT, non-zero exit codes, and cargo's stderr tail
+  survive the round trip), so the existing classification and diagnosis are
+  unchanged. New option **`spawnBroker`** (default `true`, dev only; builds and
+  vitest always spawn directly). One idle helper (~40MB) per dev server, forked
+  once per process even across multiple plugin instances (e.g. React Router's
+  client + SSR environments), and torn down on dev-server shutdown (with an
+  IPC-disconnect + ppid safety net so it never outlives the host). If the
+  broker fails to start or dies mid-request, the plugin falls back to the
+  direct-spawn path with the 0.3.5 retry + fd diagnosis.
+
 ## 0.3.5 (2026-07-10)
 
 ### vite-plugin-native-rust

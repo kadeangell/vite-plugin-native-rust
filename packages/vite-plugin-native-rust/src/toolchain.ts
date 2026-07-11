@@ -1,9 +1,7 @@
-import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { promisify } from "node:util";
 
-const execFileAsync = promisify(execFile);
+import { directExec, type ExecFn } from "./spawn.ts";
 
 /**
  * Fingerprint of the build toolchain, mixed into the cache key so a `rustc` or
@@ -21,9 +19,9 @@ export interface ToolchainKey {
 let rustcPromise: Promise<string> | null = null;
 const napiVersionByBin = new Map<string, string>();
 
-async function readRustcVersion(): Promise<string> {
+async function readRustcVersion(exec: ExecFn): Promise<string> {
   try {
-    const { stdout } = await execFileAsync("rustc", ["-V"]);
+    const { stdout } = await exec("rustc", ["-V"]);
     return stdout.trim() || "rustc:unknown";
   } catch {
     return "rustc:unavailable";
@@ -60,8 +58,9 @@ function readNapiCliVersion(napiBin: string | null): string {
  */
 export async function getToolchainKey(
   napiBin: string | null,
+  exec: ExecFn = directExec,
 ): Promise<ToolchainKey> {
-  if (!rustcPromise) rustcPromise = readRustcVersion();
+  if (!rustcPromise) rustcPromise = readRustcVersion(exec);
   const [rustc] = await Promise.all([rustcPromise]);
   return { rustc, napiCli: readNapiCliVersion(napiBin) };
 }
