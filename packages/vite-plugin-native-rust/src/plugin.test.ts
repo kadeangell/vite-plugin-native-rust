@@ -19,7 +19,10 @@ test("plugin exposes the expected Vite hook surface", () => {
 
 test("config hook forces ssrEmitAssets so the native addon ships in SSR builds", () => {
   const plugin = rustPlugin();
-  // `config` is a plain function here; call it the way Vite would.
-  const partial = (plugin.config as () => { build?: { ssrEmitAssets?: boolean } })();
+  // `config` is a plain function here; call it the way Vite would (it now
+  // takes the user config to derive root for crate-target watch ignores).
+  const partial = (
+    plugin.config as (c: object) => { build?: { ssrEmitAssets?: boolean } }
+  )({});
   assert.equal(partial.build?.ssrEmitAssets, true);
 });

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.4 (2026-07-10)
+
+### vite-plugin-native-rust
+
+- Issue #6 root cause found and mitigated: `spawn EBADF` was **file-descriptor
+  exhaustion** — a dev-server process holding ~24k+ fds (proven by clean-room
+  reproduction) breaks all child-process spawning on macOS/Node. Watchers
+  without fsevents (chokidar 4 = kqueue) hold an fd per watched file, so huge
+  trees inside the watched root (vendored envs, datasets, cargo `target/`)
+  poison the process. The plugin now watch-ignores every known crate's
+  `target/` in Vite's watcher (config-time via the pre-warm manifest +
+  `prewarm` anchors; runtime unwatch for crates discovered at first load).
+  Framework-owned watchers (e.g. `@react-router/dev`'s hardcoded appDirectory
+  watcher) are out of the plugin's reach — see the new troubleshooting entry.
+
 ## 0.3.3 (2026-07-08)
 
 ### vite-plugin-native-rust

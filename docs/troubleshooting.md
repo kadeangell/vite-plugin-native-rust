@@ -218,3 +218,38 @@ and bounded by your edit count.
 **Fix:** none needed for normal use; restart the dev server if a marathon editing
 session accumulates enough. Production is unaffected — the build loads exactly one
 addon.
+
+## `spawn EBADF` — every cargo invocation fails, cargo is installed
+
+**Symptom:** `cargo preflight failed with a system error (spawn EBADF)` (or the
+`cargo metadata` fallback warning with the same code), deterministically, in a
+dev server where cargo works fine from a plain shell.
+
+**Cause (proven by reproduction):** the dev-server process is holding an
+enormous file-descriptor table — beyond roughly 24k open fds, macOS/Node
+child-process spawning fails with `EBADF` for *every* subprocess. A clean Node
+process holding 24.5k fds reproduces it exactly. The usual fd hoarder is a
+**file watcher on a huge tree**: chokidar 4 dropped fsevents, so on macOS it
+opens one fd per watched file — a vendored Python env, a dataset directory, or
+a cargo `target/` tree inside the watched root can contribute tens of
+thousands.
+
+**Diagnose:** `lsof -p <vite pid> | wc -l` — tens of thousands confirms it.
+Then bucket the holders:
+`lsof -p <pid> | awk '$5=="REG" {print $9}' | awk -F/ '{print $(NF-2)}' | sort | uniq -c | sort -rn | head`.
+
+**Fix, in order of effectiveness:**
+
+1. **Move the huge tree out of the watched root.** This is the only fix that
+   covers every watcher. Note that framework dev servers can run watchers the
+   plugin cannot influence — e.g. `@react-router/dev` watches the entire
+   `appDirectory` with a **hardcoded** ignore list that honors neither Vite's
+   `server.watch.ignored` nor anything this plugin sets. Anything huge inside
+   `app/` must physically move out.
+2. Keep crates **outside** the app directory (the layout every example in this
+   repo uses — `native/` at the project root). As of 0.3.4 the plugin also
+   watch-ignores known crates' `target/` in **Vite's** watcher automatically,
+   but it cannot reach framework-owned watchers (see 1).
+3. Vite-side trees can be excluded with `server.watch.ignored` — correct for
+   vanilla Vite SSR / SvelteKit / Astro, insufficient under React Router's
+   extra watcher.

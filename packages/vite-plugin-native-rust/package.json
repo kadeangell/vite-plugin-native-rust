@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-native-rust",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Import Rust directly in Vite SSR server code — compiles napi-rs crates to native addons with caching, types, and zero-config deploys.",
   "type": "module",
   "license": "MIT",

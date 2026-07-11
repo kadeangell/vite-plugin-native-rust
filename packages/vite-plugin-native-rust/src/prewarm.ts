@@ -279,6 +279,28 @@ function resolveAnchor(
   return crateDir;
 }
 
+/**
+ * Every crate dir discoverable WITHOUT resolving an import: the pre-warm
+ * manifest plus explicit `prewarm` anchors. Used at config time to
+ * watch-ignore each crate's `target/` (issue #6 forensics: a crate inside the
+ * watched root feeds thousands of cargo intermediates to the dev watcher,
+ * which holds an fd per file until child-process spawning collapses with
+ * EBADF). Anchor warnings are suppressed here — pre-warm itself re-resolves
+ * them with a real warner.
+ */
+export function knownCrateDirs(
+  cacheBase: string,
+  root: string,
+  prewarm: ResolvedOptions["prewarm"],
+): string[] {
+  const fromManifest = readPrewarmManifest(cacheBase);
+  const anchors = prewarm === false ? [] : prewarm;
+  const fromAnchors = anchors
+    .map((anchor) => resolveAnchor(root, anchor, () => {}))
+    .filter((dir): dir is string => dir !== null);
+  return [...new Set([...fromManifest, ...fromAnchors])];
+}
+
 export interface PrewarmParams {
   root: string;
   cacheBase: string;

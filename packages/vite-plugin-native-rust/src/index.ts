@@ -16,6 +16,7 @@ import { ensureAddonsBesideChunks, type EmittedAddon } from "./output.ts";
 import { resolveOptions, type RustPluginOptions } from "./options.ts";
 import {
   ensureCrateCompiled,
+  knownCrateDirs,
   prewarmCrates,
   recordCrateInManifest,
 } from "./prewarm.ts";
@@ -55,17 +56,51 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
     return isAbsolute(opts.cacheDir) ? opts.cacheDir : resolve(root, opts.cacheDir);
   };
 
+  // Dev server handle + the crate dirs whose target/ we've already unwatched.
+  // Crates discovered at load time (not in the manifest at config time) get
+  // their target/ pulled out of the watcher here — same fd-exhaustion defense
+  // as the config-time ignore (issue #6).
+  let devWatcher: { unwatch: (paths: string | string[]) => unknown } | null = null;
+  const unwatchedTargets = new Set<string>();
+  const unwatchCrateTarget = (crateDir: string): void => {
+    if (!devWatcher || unwatchedTargets.has(crateDir)) return;
+    unwatchedTargets.add(crateDir);
+    try {
+      const target = join(crateDir, "target");
+      devWatcher.unwatch([target, join(target, "**")]);
+    } catch {
+      // Watcher differences across Vite majors — never let hygiene break dev.
+    }
+  };
+
   return {
     name: "vite-rust",
     enforce: "pre",
 
-    config() {
-      // The native `.node` is emitted as an asset into the SSR bundle, but Vite
-      // drops SSR-build assets unless `ssrEmitAssets` is set — so a bare
-      // `vite build --ssr` would ship a server that can't find its addon.
-      // Frameworks (React Router) wire this up themselves; we guarantee it for
-      // everyone. User config still wins if they set it explicitly.
-      return { build: { ssrEmitAssets: true } };
+    config(userConfig) {
+      // Two guarantees (user config always wins where it conflicts):
+      // 1. `ssrEmitAssets` — Vite drops SSR-build assets otherwise, so a bare
+      //    `vite build --ssr` would ship a server that can't find its addon.
+      // 2. Watch-ignore every known crate's `target/` (issue #6 forensics): a
+      //    crate living inside the watched root feeds thousands of cargo
+      //    intermediate files to the dev watcher, which holds an fd per file —
+      //    a bloated fd table eventually breaks child-process spawning with
+      //    EBADF. Crates are known here via the pre-warm manifest and explicit
+      //    `prewarm` anchors; crates first discovered at load time are
+      //    unwatched at runtime instead (see `load`).
+      const cwd = (userConfig.root as string | undefined) ?? process.cwd();
+      const cacheBase = !opts.cacheDir
+        ? join(cwd, DEFAULT_CACHE_SUBDIR)
+        : isAbsolute(opts.cacheDir)
+          ? opts.cacheDir
+          : resolve(cwd, opts.cacheDir);
+      const ignored = knownCrateDirs(cacheBase, cwd, opts.prewarm).map(
+        (dir) => join(dir, "target", "**"),
+      );
+      return {
+        build: { ssrEmitAssets: true },
+        ...(ignored.length > 0 ? { server: { watch: { ignored } } } : {}),
+      };
     },
 
     configResolved(config) {
@@ -84,7 +119,8 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
     // must never delay startup or crash the server — `prewarmCrates` reports
     // per-crate failures as warnings and never rejects. Skipped under vitest
     // (tests compile on demand); build mode never calls this hook.
-    configureServer() {
+    configureServer(server) {
+      devWatcher = server.watcher;
       if (underVitest || opts.prewarm === false) return;
       const write = (message: string): void => {
         process.stderr.write(message.endsWith("\n") ? message : `${message}\n`);
@@ -150,6 +186,7 @@ export function rustPlugin(options?: RustPluginOptions): Plugin {
       const rsPath = id.slice(0, -RUST_QUERY.length);
 
       const crateDir = findCargoToml(rsPath);
+      if (crateDir) unwatchCrateTarget(crateDir);
       if (!crateDir) {
         return this.error(
           `No Cargo.toml found for Rust import "${rsPath}". Walked up from ` +
