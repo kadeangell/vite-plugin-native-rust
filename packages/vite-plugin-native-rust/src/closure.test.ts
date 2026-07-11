@@ -179,6 +179,43 @@ test("falls back to single-crate hashing (with a warning) when metadata fails", 
   assert.match(warnings[0], /falling back to single-crate/);
 });
 
+test("issue #6: metadata-fallback warning names the fd count when the process is under fd pressure", async () => {
+  resetClosureCacheForTests();
+  const { appDir } = makeWorkspace("fallback-fd");
+  const warnings: string[] = [];
+  const failing: MetadataRunner = async () => {
+    throw new Error("spawn EBADF");
+  };
+
+  await collectClosureInputs(appDir, {
+    runMetadata: failing,
+    onWarn: (m) => warnings.push(m),
+    fdCount: () => 30000,
+  });
+
+  assert.equal(warnings.length, 1, "one warning surfaced");
+  assert.match(warnings[0], /falling back to single-crate/);
+  assert.match(warnings[0], /30000 open file descriptors/);
+});
+
+test("issue #6: a healthy fd count leaves the metadata-fallback warning unadorned", async () => {
+  resetClosureCacheForTests();
+  const { appDir } = makeWorkspace("fallback-fd-healthy");
+  const warnings: string[] = [];
+  const failing: MetadataRunner = async () => {
+    throw new Error("cargo exploded");
+  };
+
+  await collectClosureInputs(appDir, {
+    runMetadata: failing,
+    onWarn: (m) => warnings.push(m),
+    fdCount: () => 3400,
+  });
+
+  assert.equal(warnings.length, 1, "one warning surfaced");
+  assert.doesNotMatch(warnings[0], /file descriptors/);
+});
+
 test(
   "real cargo metadata: changing a path-dep's source changes the closure hash",
   { skip: hasCargo() ? false : "cargo not installed" },

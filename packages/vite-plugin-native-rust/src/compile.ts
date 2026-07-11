@@ -1,9 +1,12 @@
 import { execFile } from "node:child_process";
 
 import {
+  describeFdPressure,
   execFileTransientRetry,
   isCommandNotFound,
+  processFdCount,
   type ExecFn,
+  type FdCounter,
 } from "./spawn.ts";
 import {
   copyFileSync,
@@ -54,9 +57,12 @@ export function resolveNapiBin(): string {
  * issue #6) get one retry and are otherwise reported for what they are, not
  * blamed on a missing toolchain.
  */
-export async function assertCargoAvailable(exec?: ExecFn): Promise<void> {
+export async function assertCargoAvailable(
+  exec?: ExecFn,
+  fdCount: FdCounter = processFdCount,
+): Promise<void> {
   try {
-    await execFileTransientRetry("cargo", ["--version"], undefined, exec);
+    await execFileTransientRetry("cargo", ["--version"], undefined, exec, fdCount);
   } catch (error: unknown) {
     if (isCommandNotFound(error)) {
       throw new Error(
@@ -64,6 +70,13 @@ export async function assertCargoAvailable(exec?: ExecFn): Promise<void> {
       );
     }
     const code = (error as { code?: unknown })?.code ?? "unknown";
+    // Self-diagnose: if this process is itself holding a pathological number of
+    // fds, that IS the reason cargo can't spawn — say so instead of blaming a
+    // transient flake the user can't act on.
+    const pressure = describeFdPressure(fdCount());
+    if (pressure !== null) {
+      throw new Error(`cargo preflight failed (spawn ${String(code)}) — ${pressure}`);
+    }
     throw new Error(
       `cargo preflight failed with a system error (spawn ${String(code)}). ` +
         "This is usually a transient macOS/Node child-process flake, not a " +

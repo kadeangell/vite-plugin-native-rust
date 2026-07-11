@@ -2,7 +2,12 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, parse } from "node:path";
 
 import { collectCrateInputs } from "./crate.ts";
-import { execFileTransientRetry } from "./spawn.ts";
+import {
+  describeFdPressure,
+  execFileTransientRetry,
+  processFdCount,
+  type FdCounter,
+} from "./spawn.ts";
 
 /** The slice of `cargo metadata --format-version 1` output we rely on. */
 export interface CargoMetadata {
@@ -28,6 +33,20 @@ export interface ClosureOptions {
   runGenerateLockfile?: LockfileRunner;
   /** Surface a non-fatal warning (e.g. the metadata fallback). */
   onWarn?: (message: string) => void;
+  /** Override the open-fd counter (tests inject a fixed value). */
+  fdCount?: FdCounter;
+}
+
+/**
+ * Enrichment appended to a fallback warning when the spawn failure was really
+ * fd-table exhaustion (issue #6): a `cargo metadata`/`generate-lockfile` spawn
+ * that dies under fd pressure isn't a manifest problem, so name the true cause.
+ * Empty string below the pressure threshold — the same DRY gate the other
+ * failure paths use.
+ */
+function fdPressureSuffix(fdCount: FdCounter): string {
+  const pressure = describeFdPressure(fdCount());
+  return pressure === null ? "" : ` — ${pressure}`;
 }
 
 // Both default runners retry once on transient spawn errors (macOS EBADF
@@ -128,6 +147,7 @@ function findExistingLockfile(crateDir: string): string | null {
 async function ensureLockfile(
   crateDir: string,
   runGenerateLockfile: LockfileRunner,
+  fdCount: FdCounter,
   onWarn?: (message: string) => void,
 ): Promise<void> {
   if (findExistingLockfile(crateDir) !== null) return;
@@ -141,7 +161,7 @@ async function ensureLockfile(
         `\`cargo generate-lockfile\` failed — the first compile will create ` +
         `one, which changes the cache key and forces one extra recompile in ` +
         `later build steps. Generate and commit a Cargo.lock to avoid this: ` +
-        `${(err as Error).message}`,
+        `${(err as Error).message}${fdPressureSuffix(fdCount)}`,
     );
   }
 }
@@ -258,7 +278,8 @@ export async function collectClosureInputs(
   const runMetadata = options.runMetadata ?? defaultRunMetadata;
   const runGenerateLockfile =
     options.runGenerateLockfile ?? defaultRunGenerateLockfile;
-  await ensureLockfile(crateDir, runGenerateLockfile, options.onWarn);
+  const fdCount = options.fdCount ?? processFdCount;
+  await ensureLockfile(crateDir, runGenerateLockfile, fdCount, options.onWarn);
   try {
     const layout = await resolveLayout(crateDir, runMetadata);
     return layoutToInputs(layout);
@@ -266,7 +287,7 @@ export async function collectClosureInputs(
     options.onWarn?.(
       `[vite-plugin-native-rust] \`cargo metadata\` failed for "${crateDir}"; ` +
         `falling back to single-crate hashing (path-dep and workspace changes ` +
-        `will not be tracked): ${(err as Error).message}`,
+        `will not be tracked): ${(err as Error).message}${fdPressureSuffix(fdCount)}`,
     );
     return collectCrateInputs(crateDir);
   }

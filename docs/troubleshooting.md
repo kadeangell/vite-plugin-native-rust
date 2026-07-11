@@ -219,11 +219,13 @@ and bounded by your edit count.
 session accumulates enough. Production is unaffected — the build loads exactly one
 addon.
 
+<a id="spawn-ebadf"></a>
+
 ## `spawn EBADF` — every cargo invocation fails, cargo is installed
 
-**Symptom:** `cargo preflight failed with a system error (spawn EBADF)` (or the
-`cargo metadata` fallback warning with the same code), deterministically, in a
-dev server where cargo works fine from a plain shell.
+**Symptom:** `cargo preflight failed (spawn EBADF)` (or the `cargo metadata`
+fallback warning with the same code), deterministically, in a dev server where
+cargo works fine from a plain shell.
 
 **Cause (proven by reproduction):** the dev-server process is holding an
 enormous file-descriptor table — beyond roughly 24k open fds, macOS/Node
@@ -234,9 +236,18 @@ opens one fd per watched file — a vendored Python env, a dataset directory, or
 a cargo `target/` tree inside the watched root can contribute tens of
 thousands.
 
-**Diagnose:** `lsof -p <vite pid> | wc -l` — tens of thousands confirms it.
-Then bucket the holders:
-`lsof -p <pid> | awk '$5=="REG" {print $9}' | awk -F/ '{print $(NF-2)}' | sort | uniq -c | sort -rn | head`.
+**Diagnose:** as of 0.3.5 the plugin diagnoses this for you. When a cargo spawn
+fails (or recovers on retry) while the process is holding a pathological number
+of fds, the error/warning names the count directly — e.g. *"this process is
+holding 31204 open file descriptors, which breaks child-process spawning"*. If
+you see that, you have your answer; skip straight to the fix.
+
+**Confirming the holder:** to see *which* tree is eating the fds, inspect the
+Vite process with `lsof`: `lsof -p <vite pid> | wc -l` shows the total (tens of
+thousands confirms it), and
+`lsof -p <pid> | awk '$5=="REG" {print $9}' | awk -F/ '{print $(NF-2)}' | sort | uniq -c | sort -rn | head`
+buckets the open regular files by their grandparent directory so the offending
+tree is obvious.
 
 **Fix, in order of effectiveness:**
 

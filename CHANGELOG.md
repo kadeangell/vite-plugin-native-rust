@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.5 (2026-07-10)
+
+### vite-plugin-native-rust
+
+- fd-exhaustion self-diagnosis ([#6](https://github.com/kadeangell/vite-plugin-native-rust/issues/6)):
+  when a cargo spawn fails or recovers on retry, the plugin now reads its own
+  process's open-fd count (`/dev/fd`) and, when it's pathological
+  (≥ `FD_PRESSURE_THRESHOLD` = 8192 — well above a healthy dev server's ≈3.4k
+  yet far below the ≈24k where macOS/Node spawning breaks entirely), names
+  fd-table exhaustion as the cause in the message instead of blaming a
+  transient flake. Covers the `cargo --version` preflight, the recovered-retry
+  log line, and the `cargo metadata` / `generate-lockfile` fallback warnings.
+  Below the threshold (or on a platform without `/dev/fd`) the wording is
+  unchanged. The troubleshooting doc now reframes `lsof` as *confirming the
+  holder* rather than initial diagnosis.
+
 ## 0.3.4 (2026-07-10)
 
 ### vite-plugin-native-rust
